@@ -2,20 +2,25 @@
     ViewData["Title"] = "Home Page";
 
     var kanjiText = "維基百科（Wikipedia，聆聽i/ˌwɪkᵻˈpiːdi.ə/）是一個自由內容、公開編輯且多語言的網路百科全書協作計畫";
-    var numericText = "1029373476723465728722676723527239843";
+    var numericText = "102937347672346572872267672352723345897634875638465287346528374652837465283746523458762345876234983487569843";
+    var alphaNumericText = "ABCghsdfjkgh234786458712%%sdfhg";
 }
 
 <div class="text-center">
     <h1 class="display-4">Welcome to QrCode Generator Sample</h1>
     <div style="width:250px;margin: 20px auto 20px auto;">
-        <qrcode data="Some random Text for QrCode" scale="10" border="0"/>
+        <qrcode data="Some random Text for QrCode" scale="10" border="2" />
     </div>
 
     <div style="width:250px;margin: 20px auto 20px auto;">
-        <qrcode data="@kanjiText" scale="10" border="0" />
+        <qrcode data="@kanjiText" scale="5" />
     </div>
 
     <div style="width:250px;margin: 20px auto 20px auto;">
-        <qrcode data="@numericText" scale="10" border="0" />
+        <qrcode data="@numericText" border="1" />
+    </div>
+
+    <div style="width:250px;margin: 20px auto 20px auto;">
+        <qrcode data="@alphaNumericText" />
     </div>
 </div>
