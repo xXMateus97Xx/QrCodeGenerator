@@ -1,16 +1,15 @@
 using System;
 
-namespace QrCodeGenerator
-{
-    public class DataTooLongException : ArgumentException
-    {
-        public DataTooLongException()
-        {   
-        }
+namespace QrCodeGenerator;
 
-        public DataTooLongException(string msg)
-            : base(msg)
-        {
-        }
+public class DataTooLongException : ArgumentException
+{
+    public DataTooLongException()
+    {
+    }
+
+    public DataTooLongException(string msg)
+        : base(msg)
+    {
     }
 }

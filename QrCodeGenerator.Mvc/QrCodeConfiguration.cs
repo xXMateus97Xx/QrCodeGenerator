@@ -1,33 +1,32 @@
 using Microsoft.Extensions.Configuration;
 using System;
 
-namespace QrCodeGenerator.Mvc
+namespace QrCodeGenerator.Mvc;
+
+public class QrCodeConfiguration
 {
-    public class QrCodeConfiguration
+    public QrCodeConfiguration(IConfiguration configuration)
     {
-        public QrCodeConfiguration(IConfiguration configuration)
-        {
-            ErrorCorrectionLevel = ParseConfiguration<Ecc>(configuration, "qrCode:ecc", Ecc.Low);
-            Format = ParseConfiguration<QrCodeFormat>(configuration, "qrCode:format", QrCodeFormat.Svg);
-        }
+        ErrorCorrectionLevel = ParseConfiguration<Ecc>(configuration, "qrCode:ecc", Ecc.Low);
+        Format = ParseConfiguration<QrCodeFormat>(configuration, "qrCode:format", QrCodeFormat.Svg);
+    }
 
-        public QrCodeConfiguration() 
-        { 
-            ErrorCorrectionLevel = Ecc.Low;
-            Format = QrCodeFormat.Svg;
-        }
+    public QrCodeConfiguration()
+    {
+        ErrorCorrectionLevel = Ecc.Low;
+        Format = QrCodeFormat.Svg;
+    }
 
-        public Ecc ErrorCorrectionLevel { get; set; }
-        public QrCodeFormat Format { get; set; }
+    public Ecc ErrorCorrectionLevel { get; set; }
+    public QrCodeFormat Format { get; set; }
 
-        private T ParseConfiguration<T>(IConfiguration configuration, string key, T @default = default) where T : struct
-        {
-            var configString = configuration[key];
-            if (!string.IsNullOrWhiteSpace(configString))
-                if (Enum.TryParse<T>(configString, out var val))
-                    return val;
+    private T ParseConfiguration<T>(IConfiguration configuration, string key, T @default = default) where T : struct
+    {
+        var configString = configuration[key];
+        if (!string.IsNullOrWhiteSpace(configString))
+            if (Enum.TryParse<T>(configString, out var val))
+                return val;
 
-            return @default;
-        }
+        return @default;
     }
 }

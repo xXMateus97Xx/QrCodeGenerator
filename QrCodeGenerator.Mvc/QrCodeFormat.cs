@@ -1,8 +1,7 @@
-namespace QrCodeGenerator.Mvc
+namespace QrCodeGenerator.Mvc;
+
+public enum QrCodeFormat
 {
-    public enum QrCodeFormat
-    {
-        Svg,
-        Png
-    }
+    Svg,
+    Png
 }
