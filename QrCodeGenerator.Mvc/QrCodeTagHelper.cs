@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Razor.TagHelpers;
 using SixLabors.ImageSharp.Formats.Png;
 using System;
-using System.Buffers;
 using System.IO;
 
 namespace QrCodeGenerator.Mvc;
@@ -52,12 +51,9 @@ public class QrCodeTagHelper : TagHelper
             using var ms = new MemoryStream();
             bitmap.Save(ms, new PngEncoder());
 
-            ms.Position = 0;
-
             var msLength = (int)ms.Length;
 
-            var bytes = ArrayPool<byte>.Shared.Rent(msLength);
-            ms.Read(bytes);
+            var bytes = ms.GetBuffer();
 
             var base64Length = ((4 * msLength / 3) + 3) & ~3;
 
@@ -74,8 +70,6 @@ public class QrCodeTagHelper : TagHelper
 
                 closeTag.CopyTo(s.Slice(openTag.Length + written));
             });
-
-            ArrayPool<byte>.Shared.Return(bytes);
 
             output.Content.AppendHtml(tag);
         }
