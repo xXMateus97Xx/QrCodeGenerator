@@ -1,6 +1,5 @@
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
@@ -36,12 +35,10 @@ public sealed class QrSegment
     public Mode Mode => _mode;
     public int NumChars => _numChars;
 
-    public static int GetTotalBits(List<QrSegment> segs, int version)
+    public static int GetTotalBits(ReadOnlyMemory<QrSegment> segs, int version)
     {
-        Utils.CheckNull(segs, nameof(segs));
-
         long result = 0;
-        foreach (var seg in segs)
+        foreach (var seg in segs.Span)
         {
             Utils.CheckNull(seg, nameof(seg));
 
@@ -95,21 +92,21 @@ public sealed class QrSegment
         return new QrSegment(Mode.ALPHANUMERIC, text.Length, bb, false);
     }
 
-    public static List<QrSegment> MakeSegments(string text)
+    public static ReadOnlyMemory<QrSegment> MakeSegments(string text)
     {
         Utils.CheckNull(text, nameof(text));
 
-        var result = new List<QrSegment>();
+        var result = new QrSegment[1];
         if (text == string.Empty)
             return result;
 
         if (text.All(c => char.IsDigit(c)))
         {
-            result.Add(MakeNumeric(text));
+            result[0] = MakeNumeric(text);
         }
         else if (text.All(c => ALPHANUMERIC_CHARSET.Contains(c)))
         {
-            result.Add(MakeAlphanumeric(text));
+            result[0] = MakeAlphanumeric(text);
         }
         else
         {
@@ -120,7 +117,7 @@ public sealed class QrSegment
 
             Encoding.UTF8.TryGetBytes(text, buffer, out var written);
 
-            result.Add(MakeBytes(buffer.Slice(0, written)));
+            result[0] = MakeBytes(buffer.Slice(0, written));
 
             if (pooledArray != null)
                 ArrayPool<byte>.Shared.Return(pooledArray);

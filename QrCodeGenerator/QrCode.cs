@@ -110,13 +110,15 @@ public partial class QrCode
         var rsDiv = ReedSolomonComputeDivisor(blockEccLen);
         for (int i = 0, k = 0; i < numBlocks; i++)
         {
-            var dat = new byte[shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1)];
-            Array.Copy(data, k, dat, 0, dat.Length);
-            k += dat.Length;
+            var datLength = shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1);
+
             var block = new byte[shortBlockLen + 1];
-            Array.Copy(dat, 0, block, 0, dat.Length);
-            var ecc = ReedSolomonComputeRemainder(dat, rsDiv);
-            Array.Copy(ecc, 0, block, block.Length - blockEccLen, ecc.Length);
+            var dat = data.AsSpan(k).Slice(0, datLength);
+            dat.CopyTo(block);
+
+            ReedSolomonComputeRemainder(dat, rsDiv, block.AsSpan(block.Length - blockEccLen));
+
+            k += datLength;
             blocks[i] = block;
         }
 
@@ -245,22 +247,20 @@ public partial class QrCode
     {
         if (_version == 1)
             return Array.Empty<int>();
+
+        var numAlign = _version / 7 + 2;
+        int step;
+        if (_version == 32)
+            step = 26;
         else
-        {
-            var numAlign = _version / 7 + 2;
-            int step;
-            if (_version == 32)
-                step = 26;
-            else
-                step = (_version * 4 + numAlign * 2 + 1) / (numAlign * 2 - 2) * 2;
+            step = (_version * 4 + numAlign * 2 + 1) / (numAlign * 2 - 2) * 2;
 
-            var result = new int[numAlign];
-            result[0] = 6;
-            for (int i = result.Length - 1, pos = _size - 7; i >= 1; i--, pos -= step)
-                result[i] = pos;
+        var result = new int[numAlign];
+        result[0] = 6;
+        for (int i = result.Length - 1, pos = _size - 7; i >= 1; i--, pos -= step)
+            result[i] = pos;
 
-            return result;
-        }
+        return result;
     }
 
     private void DrawAlignmentPattern(int x, int y)

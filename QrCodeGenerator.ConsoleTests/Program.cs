@@ -1,6 +1,6 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
-using System.Collections.Generic;
+using System;
 using System.IO;
 using System.Text;
 
@@ -66,7 +66,7 @@ class Program
     private static void DoSegmentDemo()
     {
         QrCode qr;
-        List<QrSegment> segs;
+        QrSegment[] segs;
 
         // Illustration "silver"
         var silver0 = "THE SQUARE ROOT OF 2 IS 1.";
@@ -74,11 +74,10 @@ class Program
         qr = QrCode.EncodeText(silver0 + silver1, Ecc.Low);
         WritePng(qr.ToImage(10, 3), "sqrt2-monolithic-QR.png");
 
-        segs = new List<QrSegment>()
-        {
+        segs = [
             QrSegment.MakeAlphanumeric(silver0),
             QrSegment.MakeNumeric(silver1)
-        };
+        ];
         qr = QrCode.EncodeSegments(segs, Ecc.Low);
         WritePng(qr.ToImage(10, 3), "sqrt2-segmented-QR.png");
 
@@ -89,12 +88,11 @@ class Program
         qr = QrCode.EncodeText(golden0 + golden1 + golden2, Ecc.Low);
         WritePng(qr.ToImage(8, 5), "phi-monolithic-QR.png");
 
-        segs = new List<QrSegment>()
-        {
+        segs = [
             QrSegment.MakeBytes(Encoding.UTF8.GetBytes(golden0)),
             QrSegment.MakeNumeric(golden1),
             QrSegment.MakeAlphanumeric(golden2)
-        };
+        ];
         qr = QrCode.EncodeSegments(segs, Ecc.Low);
         WritePng(qr.ToImage(8, 5), "phi-segmented-QR.png");
 
@@ -103,7 +101,7 @@ class Program
         qr = QrCode.EncodeText(madoka, Ecc.Low);
         WritePng(qr.ToImage(9, 4), "madoka-utf8-QR.png");
 
-        segs = new List<QrSegment>() { QrSegmentAdvanced.MakeKanji(madoka) };
+        segs = [QrSegmentAdvanced.MakeKanji(madoka)];
         qr = QrCode.EncodeSegments(segs, Ecc.Low);
         WritePng(qr.ToImage(9, 4), "madoka-kanji-QR.png");
     }
@@ -112,7 +110,7 @@ class Program
     private static void DoMaskDemo()
     {
         QrCode qr;
-        List<QrSegment> segs;
+        ReadOnlyMemory<QrSegment> segs;
 
         // Project Nayuki URL
         segs = QrSegment.MakeSegments("https://www.nayuki.io/");
