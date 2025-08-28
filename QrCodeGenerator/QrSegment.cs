@@ -1,6 +1,5 @@
 using System;
 using System.Buffers;
-using System.Linq;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -38,8 +37,9 @@ public sealed class QrSegment
     public static int GetTotalBits(ReadOnlyMemory<QrSegment> segs, int version)
     {
         long result = 0;
-        foreach (var seg in segs.Span)
+        for (int i = 0; i < segs.Length; i++)
         {
+            var seg = segs.Span[i];
             Utils.CheckNull(seg, nameof(seg));
 
             var ccbits = seg.Mode.NumCharCountBits(version);
@@ -54,29 +54,55 @@ public sealed class QrSegment
         return (int)result;
     }
 
-    public static QrSegment MakeNumeric(string digits)
+    public static bool IsNumeric(ReadOnlySpan<char> text)
     {
-        Utils.CheckNull(digits, nameof(digits));
-        if (digits.Any(c => !char.IsDigit(c)))
+        for (int i = 0; i < text.Length; i++)
+            if (!char.IsDigit(text[i]))
+                return false;
+
+        return true;
+    }
+
+    public static QrSegment MakeNumeric(ReadOnlySpan<char> digits)
+    {
+        if (!IsNumeric(digits))
             throw new ArgumentException("String contains non-numeric characters");
 
+        return MakeNumericCore(digits);
+    }
+
+    private static QrSegment MakeNumericCore(ReadOnlySpan<char> digits)
+    {
         var bb = new BitBuffer();
         for (int i = 0; i < digits.Length;)
         {
             var n = Math.Min(digits.Length - i, 3);
-            bb.AppendBits(int.Parse(digits.AsSpan().Slice(i, n)), n * 3 + 1);
+            bb.AppendBits(int.Parse(digits.Slice(i, n)), n * 3 + 1);
             i += n;
         }
         return new QrSegment(Mode.NUMERIC, digits.Length, bb, false);
     }
 
-    public static QrSegment MakeAlphanumeric(string text)
+    public static bool IsAlphanumeric(ReadOnlySpan<char> text)
     {
-        Utils.CheckNull(text, nameof(text));
+        for (int j = 0; j < text.Length; j++)
+            if (!ALPHANUMERIC_CHARSET.Contains(text[j]))
+                return false;
 
-        if (text.Any(c => !ALPHANUMERIC_CHARSET.Contains(c)))
+        return true;
+
+    }
+
+    public static QrSegment MakeAlphanumeric(ReadOnlySpan<char> text)
+    {
+        if (!IsAlphanumeric(text))
             throw new ArgumentException("String contains unencodable characters in alphanumeric mode");
 
+        return MakeAlphanumericCore(text);
+    }
+
+    private static QrSegment MakeAlphanumericCore(ReadOnlySpan<char> text)
+    {
         var bb = new BitBuffer();
         int i;
         for (i = 0; i <= text.Length - 2; i += 2)
@@ -92,21 +118,20 @@ public sealed class QrSegment
         return new QrSegment(Mode.ALPHANUMERIC, text.Length, bb, false);
     }
 
-    public static ReadOnlyMemory<QrSegment> MakeSegments(string text)
+    public static ReadOnlyMemory<QrSegment> MakeSegments(ReadOnlySpan<char> text)
     {
-        Utils.CheckNull(text, nameof(text));
+        if (text.IsEmpty)
+            return Array.Empty<QrSegment>();
 
         var result = new QrSegment[1];
-        if (text == string.Empty)
-            return result;
 
-        if (text.All(c => char.IsDigit(c)))
+        if (IsNumeric(text))
         {
-            result[0] = MakeNumeric(text);
+            result[0] = MakeNumericCore(text);
         }
-        else if (text.All(c => ALPHANUMERIC_CHARSET.Contains(c)))
+        else if (IsAlphanumeric(text))
         {
-            result[0] = MakeAlphanumeric(text);
+            result[0] = MakeAlphanumericCore(text);
         }
         else
         {
@@ -158,8 +183,8 @@ public sealed class QrSegment
     public static QrSegment MakeBytes(ReadOnlySpan<byte> data)
     {
         var bb = new BitBuffer();
-        foreach (var b in data)
-            bb.AppendBits(b & 0xFF, 8);
+        for (int i = 0; i < data.Length; i++)
+            bb.AppendBits(data[i] & 0xFF, 8);
 
         return new QrSegment(Mode.BYTE, data.Length, bb, false);
     }

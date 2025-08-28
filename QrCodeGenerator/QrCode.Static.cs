@@ -30,10 +30,8 @@ public partial class QrCode
 
     public static bool GetBit(int x, int i) => ((x >> i) & 1) != 0;
 
-    public static QrCode EncodeText(string text, Ecc ecl)
+    public static QrCode EncodeText(ReadOnlySpan<char> text, Ecc ecl)
     {
-        Utils.CheckNull(text, nameof(text));
-
         var segs = QrSegment.MakeSegments(text);
         return EncodeSegments(segs, ecl);
     }
@@ -45,8 +43,6 @@ public partial class QrCode
 
     public static QrCode EncodeSegments(ReadOnlyMemory<QrSegment> segs, Ecc ecl, int minVersion, int maxVersion, int mask, bool boostEcl)
     {
-        Utils.CheckNull(segs, nameof(segs));
-
         if (!(MIN_VERSION <= minVersion && minVersion <= maxVersion && maxVersion <= MAX_VERSION) || mask < -1 || mask > 7)
             throw new ArgumentException("Invalid value");
 
@@ -67,15 +63,25 @@ public partial class QrCode
             }
         }
 
-        foreach (var newEcl in new Ecc[] { Ecc.Low, Ecc.Medium, Ecc.Quartitle, Ecc.High })
+        if (boostEcl)
         {
-            if (boostEcl && dataUsedBits <= GetNumDataCodewords(version, newEcl) * 8)
-                ecl = newEcl;
+            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.Low) * 8)
+                ecl = Ecc.Low;
+
+            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.Medium) * 8)
+                ecl = Ecc.Medium;
+
+            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.Quartitle) * 8)
+                ecl = Ecc.Quartitle;
+
+            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.High) * 8)
+                ecl = Ecc.High;
         }
 
         var bb = new BitBuffer();
-        foreach (var seg in segs.Span)
+        for (var i = 0; i < segs.Length; i++)
         {
+            var seg = segs.Span[i];
             bb.AppendBits(seg.Mode.ModeBits, 4);
             bb.AppendBits(seg.NumChars, seg.Mode.NumCharCountBits(version));
             bb.AppendData(seg.Data);
@@ -89,12 +95,13 @@ public partial class QrCode
         for (var padByte = 0xEC; bb.Length < dataCapacityBits; padByte ^= 0xEC ^ 0x11)
             bb.AppendBits(padByte, 8);
 
-        var dataCodewords = new byte[bb.Length / 8];
+        var dataCodewordsLength = bb.Length / 8;
+        var dataCodewords = dataCodewordsLength <= 256 ? stackalloc byte[256] : new byte[dataCodewordsLength];
         for (var i = 0; i < bb.Length; i++)
             dataCodewords[i >> 3] = (byte)(dataCodewords[i >> 3] | bb.GetBit(i) << (7 - (i & 7)));
 
         // Create the QR Code object
-        return new QrCode(version, ecl, dataCodewords, mask);
+        return new QrCode(version, ecl, dataCodewords.Slice(0, dataCodewordsLength), mask);
     }
 
     public static int GetNumDataCodewords(int ver, Ecc ecl)
@@ -128,12 +135,12 @@ public partial class QrCode
         return result;
     }
 
-    private static byte[] ReedSolomonComputeDivisor(int degree)
+    private static void ReedSolomonComputeDivisor(Span<byte> result)
     {
+        var degree = result.Length;
         if (degree < 1 || degree > 255)
             throw new ArgumentException("Degree out of range");
 
-        var result = new byte[degree];
         result[degree - 1] = 1;
 
         var root = 1;
@@ -147,7 +154,6 @@ public partial class QrCode
             }
             root = ReedSolomonMultiply(root, 0x02);
         }
-        return result;
     }
 
     private static int ReedSolomonMultiply(int x, int y)
@@ -164,13 +170,14 @@ public partial class QrCode
 
     private static void ReedSolomonComputeRemainder(ReadOnlySpan<byte> data, ReadOnlySpan<byte> divisor, Span<byte> destiny)
     {
-        foreach (var b in data)
+        for (int i = 0; i < data.Length; i++)
         {
+            var b = data[i];
             var factor = (b ^ destiny[0]) & 0xFF;
             destiny.Slice(1).CopyTo(destiny);
             destiny[destiny.Length - 1] = 0;
-            for (int i = 0; i < destiny.Length; i++)
-                destiny[i] = (byte)(destiny[i] ^ ReedSolomonMultiply(divisor[i] & 0xFF, factor));
+            for (int j = 0; j < destiny.Length; j++)
+                destiny[j] = (byte)(destiny[j] ^ ReedSolomonMultiply(divisor[j] & 0xFF, factor));
         }
     }
 }

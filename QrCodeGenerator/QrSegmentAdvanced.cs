@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -65,25 +64,27 @@ public static class QrSegmentAdvanced
         }
     }
 
-    public static QrSegment MakeKanji(string text)
+    public static QrSegment MakeKanji(ReadOnlySpan<char> text)
     {
-        Utils.CheckNull(text, nameof(text));
+        if (!IsEncodableAsKanji(text))
+            throw new ArgumentException("String contains non-kanji-mode characters");
 
         var bb = new BitBuffer();
-        foreach (var c in text)
+        for (int i = 0; i < text.Length; i++)
         {
-            var val = UNICODE_TO_QR_KANJI[c];
-            if (val == -1)
-                throw new ArgumentException("String contains non-kanji-mode characters");
+            var val = UNICODE_TO_QR_KANJI[text[i]];
             bb.AppendBits(val, 13);
         }
         return new QrSegment(Mode.KANJI, text.Length, bb, false);
     }
 
-    public static bool IsEncodableAsKanji(string text)
+    public static bool IsEncodableAsKanji(ReadOnlySpan<char> text)
     {
-        Utils.CheckNull(text, nameof(text));
-        return text.All(c => IsKanji((char)c));
+        for (int i = 0; i < text.Length; i++)
+            if (!IsKanji(text[i]))
+                return false;
+
+        return true;
     }
 
     private static ReadOnlyMemory<QrSegment> MakeSegmentsOptimally(ReadOnlySpan<int> codePoints, int version)
