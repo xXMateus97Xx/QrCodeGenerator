@@ -100,7 +100,7 @@ public static class QrSegmentAdvanced
         if (codePoints.Length == 0)
             throw new ArgumentException();
 
-        var modeTypes = new Mode[] { Mode.BYTE, Mode.ALPHANUMERIC, Mode.NUMERIC, Mode.KANJI };
+        var modeTypes = Mode.All.Span;
         var numModes = modeTypes.Length;
 
         Span<int> headCosts = stackalloc int[numModes];

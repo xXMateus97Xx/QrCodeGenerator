@@ -3,17 +3,21 @@ using System.Collections;
 
 namespace QrCodeGenerator;
 
-public class BitBuffer : ICloneable
+public readonly struct BitBuffer
 {
-    private BitArray _data;
+    private readonly BitArray _data;
 
     public BitBuffer()
     {
         _data = new BitArray(0);
-        Length = 0;
     }
 
-    public int Length { get; private set; }
+    public BitBuffer(BitBuffer bitBuffer)
+    {
+        _data = new BitArray(bitBuffer._data);
+    }
+
+    public int Length => _data.Length;
 
     public int GetBit(int index)
     {
@@ -25,15 +29,14 @@ public class BitBuffer : ICloneable
 
     public void AppendData(BitBuffer bb)
     {
-        Utils.CheckNull(bb, nameof(bb));
-
         if (int.MaxValue - Length < bb.Length)
             throw new ArithmeticException("Maximum length reached");
 
+        var position = _data.Length;
         _data.Length += bb.Length;
 
-        for (var i = 0; i < bb.Length; i++, Length++)
-            _data.Set(Length, bb._data[i]);
+        for (var i = 0; i < bb.Length; i++, position++)
+            _data.Set(position, bb._data[i]);
     }
 
     public void AppendBits(int val, int len)
@@ -44,20 +47,13 @@ public class BitBuffer : ICloneable
         if (int.MaxValue - Length < len)
             throw new ArithmeticException("Maximum length reached");
 
+        var position = _data.Length;
         _data.Length += len;
 
-        for (var i = len - 1; i >= 0; i--, Length++)  // Append bit by bit
+        for (var i = len - 1; i >= 0; i--, position++)  // Append bit by bit
         {
             var bit = QrCode.GetBit(val, i);
-            _data.Set(Length, bit);
+            _data.Set(position, bit);
         }
-    }
-
-    public object Clone()
-    {
-        var clone = new BitBuffer();
-        clone._data = new BitArray(_data);
-        clone.Length = Length;
-        return clone;
     }
 }

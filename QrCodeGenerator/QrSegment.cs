@@ -20,17 +20,16 @@ public sealed class QrSegment
     internal QrSegment(Mode md, int numCh, BitBuffer data, bool cloneData)
     {
         Utils.CheckNull(md, nameof(md));
-        Utils.CheckNull(data, nameof(data));
 
         if (numCh < 0)
             throw new ArgumentException("Invalid value");
 
         _mode = md;
         _numChars = numCh;
-        _data = cloneData ? (BitBuffer)data.Clone() : data;
+        _data = cloneData ? new BitBuffer(data) : data;
     }
 
-    public BitBuffer Data => (BitBuffer)_data.Clone();
+    public BitBuffer Data => new BitBuffer(_data);
     public Mode Mode => _mode;
     public int NumChars => _numChars;
 
@@ -90,7 +89,6 @@ public sealed class QrSegment
                 return false;
 
         return true;
-
     }
 
     public static QrSegment MakeAlphanumeric(ReadOnlySpan<char> text)

@@ -2,7 +2,6 @@
 using SixLabors.ImageSharp.Formats.Png;
 using System;
 using System.IO;
-using System.Text;
 
 namespace QrCodeGenerator.ConsoleTests;
 
@@ -83,13 +82,14 @@ class Program
 
         // Illustration "golden"
         var golden0 = "Golden ratio φ = 1.";
+        var golden0u8 = "Golden ratio φ = 1."u8;
         var golden1 = "6180339887498948482045868343656381177203091798057628621354486227052604628189024497072072041893911374";
         var golden2 = "......";
         qr = QrCode.EncodeText(golden0 + golden1 + golden2, Ecc.Low);
         WritePng(qr.ToImage(8, 5), "phi-monolithic-QR.png");
 
         segs = [
-            QrSegment.MakeBytes(Encoding.UTF8.GetBytes(golden0)),
+            QrSegment.MakeBytes(golden0u8),
             QrSegment.MakeNumeric(golden1),
             QrSegment.MakeAlphanumeric(golden2)
         ];
