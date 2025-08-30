@@ -82,8 +82,9 @@ public partial class QrCode
         for (var i = 0; i < segs.Length; i++)
         {
             var seg = segs.Span[i];
-            bb.AppendBits(seg.Mode.ModeBits, 4);
-            bb.AppendBits(seg.NumChars, seg.Mode.NumCharCountBits(version));
+            var mode = seg.Mode;
+            bb.AppendBits(mode.ModeBits, 4);
+            bb.AppendBits(seg.NumChars, mode.NumCharCountBits(version));
             bb.AppendData(seg.Data);
         }
 

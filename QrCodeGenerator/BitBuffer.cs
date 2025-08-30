@@ -29,14 +29,15 @@ public readonly struct BitBuffer
 
     public void AppendData(BitBuffer bb)
     {
-        if (int.MaxValue - Length < bb.Length)
+        var data = _data;
+        if (int.MaxValue - data.Length < bb.Length)
             throw new ArithmeticException("Maximum length reached");
 
-        var position = _data.Length;
-        _data.Length += bb.Length;
+        var position = data.Length;
+        data.Length += bb.Length;
 
         for (var i = 0; i < bb.Length; i++, position++)
-            _data.Set(position, bb._data[i]);
+            data.Set(position, bb._data[i]);
     }
 
     public void AppendBits(int val, int len)
@@ -44,16 +45,17 @@ public readonly struct BitBuffer
         if (len < 0 || len > 31 || val >> len != 0)
             throw new ArgumentException("Value out of range");
 
-        if (int.MaxValue - Length < len)
+        var data = _data;
+        if (int.MaxValue - data.Length < len)
             throw new ArithmeticException("Maximum length reached");
 
-        var position = _data.Length;
-        _data.Length += len;
+        var position = data.Length;
+        data.Length += len;
 
         for (var i = len - 1; i >= 0; i--, position++)  // Append bit by bit
         {
             var bit = QrCode.GetBit(val, i);
-            _data.Set(position, bit);
+            data.Set(position, bit);
         }
     }
 }

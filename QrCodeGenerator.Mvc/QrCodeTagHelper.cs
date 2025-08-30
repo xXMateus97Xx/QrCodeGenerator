@@ -29,7 +29,8 @@ public class QrCodeTagHelper : TagHelper
 
     public override void Process(TagHelperContext context, TagHelperOutput output)
     {
-        if (string.IsNullOrWhiteSpace(Data))
+        var data = Data;
+        if (string.IsNullOrWhiteSpace(data))
         {
             output.SuppressOutput();
             return;
@@ -37,7 +38,7 @@ public class QrCodeTagHelper : TagHelper
 
         var border = Math.Max(Border, 0);
 
-        var qrCode = QrCode.EncodeText(Data, _configuration.ErrorCorrectionLevel);
+        var qrCode = QrCode.EncodeText(data, _configuration.ErrorCorrectionLevel);
         if (_configuration.Format == QrCodeFormat.Svg)
         {
             var svg = qrCode.ToSvgString(border);

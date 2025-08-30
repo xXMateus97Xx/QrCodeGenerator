@@ -17,8 +17,8 @@ public class QrCodeConfiguration
         Format = QrCodeFormat.Svg;
     }
 
-    public Ecc ErrorCorrectionLevel { get; set; }
-    public QrCodeFormat Format { get; set; }
+    public Ecc ErrorCorrectionLevel { get; init; }
+    public QrCodeFormat Format { get; init; }
 
     private T ParseConfiguration<T>(IConfiguration configuration, string key, T @default = default) where T : struct
     {
