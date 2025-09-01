@@ -1,12 +1,14 @@
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
 
 namespace QrCodeGenerator;
 
 public sealed class QrSegment
 {
-    public const string ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+    public const string ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:000";
 
     private readonly Mode _mode;
     private readonly int _numChars;
@@ -53,11 +55,71 @@ public sealed class QrSegment
         return (int)result;
     }
 
-    public static bool IsNumeric(ReadOnlySpan<char> text)
+    private static bool IsNumeric(ReadOnlySpan<char> text)
     {
+        if (Vector256.IsHardwareAccelerated && text.Length >= Vector256<ushort>.Count)
+        {
+            var min = Vector256.Create((ushort)'0');
+            var max = Vector256.Create((ushort)'9');
+            while (text.Length >= Vector256<ushort>.Count)
+            {
+                var txt = MemoryMarshal.Cast<char, ushort>(text);
+                var vec = Vector256.Create(txt);
+
+                if (Vector256.LessThanAny(vec, min))
+                    return false;
+
+                if (Vector256.GreaterThanAny(vec, max))
+                    return false;
+
+                text = text.Slice(Vector256<ushort>.Count);
+            }
+        }
+
+        if (Vector128.IsHardwareAccelerated && text.Length >= Vector128<ushort>.Count)
+        {
+            var min = Vector128.Create((ushort)'0');
+            var max = Vector128.Create((ushort)'9');
+            while (text.Length >= Vector128<ushort>.Count)
+            {
+                var txt = MemoryMarshal.Cast<char, ushort>(text);
+                var vec = Vector128.Create(txt);
+
+                if (Vector128.LessThanAny(vec, min))
+                    return false;
+
+                if (Vector128.GreaterThanAny(vec, max))
+                    return false;
+
+                text = text.Slice(Vector128<ushort>.Count);
+            }
+        }
+
+        if (Vector64.IsHardwareAccelerated && text.Length >= Vector64<ushort>.Count)
+        {
+            var min = Vector64.Create((ushort)'0');
+            var max = Vector64.Create((ushort)'9');
+            while (text.Length >= Vector64<ushort>.Count)
+            {
+                var txt = MemoryMarshal.Cast<char, ushort>(text);
+                var vec = Vector64.Create(txt);
+
+                if (Vector64.LessThanAny(vec, min))
+                    return false;
+
+                if (Vector64.GreaterThanAny(vec, max))
+                    return false;
+
+                text = text.Slice(Vector64<ushort>.Count);
+            }
+        }
+
         for (int i = 0; i < text.Length; i++)
-            if (!char.IsDigit(text[i]))
+        {
+            var c = (ushort)text[i];
+            if (c < (ushort)'0' || c > (ushort)'9')
                 return false;
+        }
 
         return true;
     }
