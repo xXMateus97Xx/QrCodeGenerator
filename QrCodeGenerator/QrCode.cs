@@ -1,6 +1,9 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
+using System.Buffers;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -27,9 +30,15 @@ public partial class QrCode
         var isFunction = new bool[_size, _size];
 
         DrawFunctionPatterns(isFunction);
-        var allCodewords = AddEccAndInterleave(dataCodewords);
+        var rawCodewords = GetNumRawDataModules(ver) / 8;
+        byte[] pooledArray = null;
+        Span<byte> allCodewords = rawCodewords <= 512 ? stackalloc byte[512] : (pooledArray = ArrayPool<byte>.Shared.Rent(rawCodewords));
+        allCodewords = allCodewords.Slice(0, rawCodewords);
+        AddEccAndInterleave(dataCodewords, allCodewords);
         DrawCodewords(allCodewords, isFunction);
         _mask = HandleConstructorMasking(msk, isFunction);
+        if (pooledArray != null)
+            ArrayPool<byte>.Shared.Return(pooledArray);
     }
 
     public String ToSvgString(int border)
@@ -95,7 +104,7 @@ public partial class QrCode
         return result;
     }
 
-    private byte[] AddEccAndInterleave(ReadOnlySpan<byte> data)
+    private void AddEccAndInterleave(ReadOnlySpan<byte> data, Span<byte> result)
     {
         var ecl = _errorCorrectionLevel;
         var version = _version;
@@ -106,12 +115,13 @@ public partial class QrCode
         // Calculate parameter numbers
         var numBlocks = NUM_ERROR_CORRECTION_BLOCKS[(int)ecl][version];
         var blockEccLen = ECC_CODEWORDS_PER_BLOCK[(int)ecl][version];
-        var rawCodewords = GetNumRawDataModules(version) / 8;
+        var rawCodewords = result.Length;
         var numShortBlocks = numBlocks - rawCodewords % numBlocks;
         var shortBlockLen = rawCodewords / numBlocks;
 
         // Split data into blocks and append ECC to each block
         var blocks = new byte[numBlocks][];
+        ref var blocksPtr = ref MemoryMarshal.GetReference<byte[]>(blocks);
         Span<byte> rsDiv = stackalloc byte[blockEccLen];
         ReedSolomonComputeDivisor(rsDiv);
 
@@ -126,23 +136,25 @@ public partial class QrCode
             ReedSolomonComputeRemainder(dat, rsDiv, block.AsSpan(block.Length - blockEccLen));
 
             k += datLength;
-            blocks[i] = block;
+            Unsafe.Add(ref blocksPtr, i) = block;
         }
 
         // Interleave (not concatenate) the bytes from every block into a single sequence
-        var result = new byte[rawCodewords];
+        ref var resultPtr = ref MemoryMarshal.GetReference<byte>(result);
         for (int i = 0, k = 0; i < blocks[0].Length; i++)
         {
             for (int j = 0; j < blocks.Length; j++)
             {
                 if (i != shortBlockLen - blockEccLen || j >= numShortBlocks)
                 {
-                    result[k] = blocks[j][i];
+                    ref var block = ref Unsafe.Add(ref blocksPtr, j);
+                    ref var item = ref MemoryMarshal.GetReference<byte>(block);
+                    item = Unsafe.Add(ref item, i);
+                    Unsafe.Add(ref resultPtr, k) = item;
                     k++;
                 }
             }
         }
-        return result;
     }
 
     private void DrawFunctionPatterns(bool[,] isFunction)
@@ -162,7 +174,9 @@ public partial class QrCode
         DrawFinderPattern(3, size - 4, isFunction);
 
         // Draw numerous alignment patterns
-        var alignPatPos = GetAlignmentPatternPositions();
+        Span<int> alignPatPos = stackalloc int[MAX_ALIGN_PATTERN_POSITION];
+        alignPatPos = alignPatPos.Slice(0, GetAlignmentPatternPositionsLength());
+        GetAlignmentPatternPositions(alignPatPos);
         var numAlign = alignPatPos.Length;
         for (var i = 0; i < numAlign; i++)
         {
@@ -179,9 +193,8 @@ public partial class QrCode
         DrawVersion(isFunction);
     }
 
-    private void DrawCodewords(byte[] data, bool[,] isFunction)
+    private void DrawCodewords(ReadOnlySpan<byte> data, bool[,] isFunction)
     {
-        Utils.CheckNull(data, nameof(data));
         if (data.Length != GetNumRawDataModules(_version) / 8)
             throw new ArgumentException();
 
@@ -236,6 +249,7 @@ public partial class QrCode
         return msk;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetFunctionModule(int x, int y, bool isBlack, bool[,] modules, bool[,] isFunction)
     {
         modules[y, x] = isBlack;
@@ -259,26 +273,34 @@ public partial class QrCode
         }
     }
 
-    private int[] GetAlignmentPatternPositions()
+    private void GetAlignmentPatternPositions(Span<int> result)
     {
-        var version = _version;
-        if (version == 1)
-            return Array.Empty<int>();
+        var numAlign = result.Length;
+        if (numAlign == 0)
+            return;
 
-        var numAlign = version / 7 + 2;
+        var version = _version;
+
         int step;
         if (version == 32)
             step = 26;
         else
             step = (version * 4 + numAlign * 2 + 1) / (numAlign * 2 - 2) * 2;
 
-        var result = new int[numAlign];
         result[0] = 6;
         var size = _size;
         for (int i = result.Length - 1, pos = size - 7; i >= 1; i--, pos -= step)
             result[i] = pos;
+    }
 
-        return result;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int GetAlignmentPatternPositionsLength()
+    {
+        var version = _version;
+        if (version == 1)
+            return 0;
+
+        return version / 7 + 2;
     }
 
     private void DrawAlignmentPattern(int x, int y, bool[,] isFunction)
@@ -363,7 +385,7 @@ public partial class QrCode
                     case 5: invert = x * y % 2 + x * y % 3 == 0; break;
                     case 6: invert = (x * y % 2 + x * y % 3) % 2 == 0; break;
                     case 7: invert = ((x + y) % 2 + x * y % 3) % 2 == 0; break;
-                    default: throw new ApplicationException();
+                    default: invert = false; break;
                 }
                 modules[y, x] ^= invert & !isFunction[y, x];
             }
@@ -471,13 +493,20 @@ public partial class QrCode
         runHistory[0] = currentRunLength;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FinderPenaltyCountPatterns(ReadOnlySpan<int> runHistory)
     {
-        var n = runHistory[1];
+        ref var hstPtr = ref MemoryMarshal.GetReference(runHistory);
+        var n = Unsafe.Add(ref hstPtr, 1);
+        var n6 = Unsafe.Add(ref hstPtr, 6);
 
-        var core = n > 0 && runHistory[2] == n && runHistory[3] == n * 3 && runHistory[4] == n && runHistory[5] == n;
-        return (core && runHistory[0] >= n * 4 && runHistory[6] >= n ? 1 : 0)
-            + (core && runHistory[6] >= n * 4 && runHistory[0] >= n ? 1 : 0);
+        var core = n > 0 &&
+            Unsafe.Add(ref hstPtr, 2) == n &&
+            Unsafe.Add(ref hstPtr, 3) == n * 3 &&
+            Unsafe.Add(ref hstPtr, 4) == n &&
+            Unsafe.Add(ref hstPtr, 5) == n;
+        return (core && hstPtr >= n * 4 && n6 >= n ? 1 : 0)
+            + (core && n6 >= n * 4 && hstPtr >= n ? 1 : 0);
     }
 
     private int FinderPenaltyTerminateAndCount(bool currentRunColor, int currentRunLength, Span<int> runHistory)

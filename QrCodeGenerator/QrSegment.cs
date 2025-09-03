@@ -8,11 +8,11 @@ namespace QrCodeGenerator;
 
 public sealed class QrSegment
 {
-    public const string ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:000";
+    public const string ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
 
     private readonly Mode _mode;
-    private readonly int _numChars;
     private readonly BitBuffer _data;
+    private readonly int _numChars;
 
     public QrSegment(Mode md, int numCh, BitBuffer data)
         : this(md, numCh, data, true)

@@ -3,6 +3,8 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -24,13 +26,15 @@ public static class QrSegmentAdvanced
         var bytes = ArrayPool<byte>.Shared.Rent(length);
         var status = Base64.DecodeFromUtf8(PACKED_QR_KANJI_TO_UNICODE, bytes, out var consumed, out var written);
 
+        ref var unicodeToKanji = ref MemoryMarshal.GetReference<short>(UNICODE_TO_QR_KANJI);
+
         for (var i = 0; i < length; i += 2)
         {
             var c = (char)(((bytes[i] & 0xFF) << 8) | (bytes[i + 1] & 0xFF));
             if (c == 0xFFFF)
                 continue;
 
-            UNICODE_TO_QR_KANJI[c] = (short)(i / 2);
+            Unsafe.Add(ref unicodeToKanji, c) = (short)(i / 2);
         }
 
         ArrayPool<byte>.Shared.Return(bytes);
@@ -69,10 +73,11 @@ public static class QrSegmentAdvanced
         if (!IsEncodableAsKanji(text))
             throw new ArgumentException("String contains non-kanji-mode characters");
 
+        ref var unicodeToKanji = ref MemoryMarshal.GetReference<short>(UNICODE_TO_QR_KANJI);
         var bb = new BitBuffer();
         for (int i = 0; i < text.Length; i++)
         {
-            var val = UNICODE_TO_QR_KANJI[text[i]];
+            var val = Unsafe.Add(ref unicodeToKanji, text[i]);
             bb.AppendBits(val, 13);
         }
         return new QrSegment(Mode.KANJI, text.Length, bb, false);

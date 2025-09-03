@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace QrCodeGenerator;
 
@@ -28,6 +30,9 @@ public partial class QrCode
     const int PENALTY_N3 = 40;
     const int PENALTY_N4 = 10;
 
+    const int MAX_ALIGN_PATTERN_POSITION = MAX_VERSION / 7 + 2;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool GetBit(int x, int i) => ((x >> i) & 1) != 0;
 
     public static QrCode EncodeText(ReadOnlySpan<char> text, Ecc ecl)
@@ -171,14 +176,17 @@ public partial class QrCode
 
     private static void ReedSolomonComputeRemainder(ReadOnlySpan<byte> data, ReadOnlySpan<byte> divisor, Span<byte> destiny)
     {
+        ref var destinyPtr = ref MemoryMarshal.GetReference(destiny);
+        ref var divisorPtr = ref MemoryMarshal.GetReference(divisor);
         for (int i = 0; i < data.Length; i++)
         {
             var b = data[i];
             var factor = (b ^ destiny[0]) & 0xFF;
             destiny.Slice(1).CopyTo(destiny);
-            destiny[destiny.Length - 1] = 0;
+
+            Unsafe.Add(ref destinyPtr, destiny.Length - 1) = 0;
             for (int j = 0; j < destiny.Length; j++)
-                destiny[j] = (byte)(destiny[j] ^ ReedSolomonMultiply(divisor[j] & 0xFF, factor));
+                Unsafe.Add(ref destinyPtr, j) = (byte)(Unsafe.Add(ref destinyPtr, j) ^ ReedSolomonMultiply(Unsafe.Add(ref divisorPtr, j) & 0xFF, factor));
         }
     }
 }
