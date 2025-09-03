@@ -7,8 +7,8 @@ The QrCode library is a port of https://github.com/nayuki/QR-Code-generator java
 #Using QRCodeGenerator Library
 
 ```C#
+using QrCodeGenerator;
 using SixLabors.ImageSharp;
-using System.Drawing;
 
 string text = "Hello, world!";
 Ecc errCorLvl = Ecc.Low;
