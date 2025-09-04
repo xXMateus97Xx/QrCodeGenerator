@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Razor.TagHelpers;
 using SixLabors.ImageSharp.Formats.Png;
 using System;
 using System.IO;
+using System.Text;
 
 namespace QrCodeGenerator.Mvc;
 
@@ -41,14 +42,15 @@ public class QrCodeTagHelper : TagHelper
         var qrCode = QrCode.EncodeText(data, _configuration.ErrorCorrectionLevel);
         if (_configuration.Format == QrCodeFormat.Svg)
         {
-            var svg = qrCode.ToSvgString(border);
-            output.Content.AppendHtml(svg);
+            var sb = new StringBuilder();
+            qrCode.ToSvgStringBuilder(border, sb);
+            output.Content.AppendHtml(new StringBuilderHtmlContent(sb));
         }
         else
         {
             var scale = Math.Max(Scale, 1);
 
-            var bitmap = qrCode.ToImage(scale, border);
+            using var bitmap = qrCode.ToImage(scale, border);
             using var ms = new MemoryStream();
             bitmap.Save(ms, new PngEncoder());
 

@@ -23,11 +23,14 @@ class Program
 
         var qr = QrCode.EncodeText(text, errCorLvl);  // Make the QR Code symbol
 
-        var img = qr.ToImage(10, 4);           // Convert to bitmap image
+        using var img = qr.ToImage(10, 4);           // Convert to bitmap image
         WritePng(img, "hello-world-QR.png");   // Write image to file
 
         var svg = qr.ToSvgString(4);                  // Convert to SVG XML code
         File.WriteAllText("hello-world-QR.svg", svg); // Write image to file
+
+        var svg2 = qr.ToUtf8SvgString(4);                  // Convert to SVG XML code
+        File.WriteAllBytes("hello-world-QR-u8.svg", svg2); // Write image to file
     }
 
 

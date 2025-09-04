@@ -2,6 +2,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Buffers;
+using System.Buffers.Text;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -41,20 +42,25 @@ public partial class QrCode
             ArrayPool<byte>.Shared.Return(pooledArray);
     }
 
-    public String ToSvgString(int border)
+    public string ToSvgString(int border)
+    {
+        var sb = new StringBuilder();
+        ToSvgStringBuilder(border, sb);
+        return sb.ToString();
+    }
+
+    public void ToSvgStringBuilder(int border, StringBuilder sb)
     {
         if (border < 0)
             throw new ArgumentException("Border must be non-negative");
 
         var size = _size;
-
-        var sb = new StringBuilder()
-            .Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-            .Append("<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n")
-            .AppendFormat("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 {0} {0}\" stroke=\"none\">\n",
-                size + border * 2)
-            .Append("\t<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n")
-            .Append("\t<path d=\"");
+        sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+          .Append("<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n")
+          .AppendFormat("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 {0} {0}\" stroke=\"none\">\n",
+              size + border * 2)
+          .Append("\t<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n")
+          .Append("\t<path d=\"");
 
         var modules = _modules;
 
@@ -62,7 +68,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (GetModule(x, y, size, modules))
+                if (modules[y, x])
                 {
                     if (x != 0 || y != 0)
                         sb.Append(" ");
@@ -70,10 +76,136 @@ public partial class QrCode
                 }
             }
         }
-        return sb
-            .Append("\" fill=\"#000000\"/>\n")
-            .Append("</svg>\n")
-            .ToString();
+
+        sb.Append("\" fill=\"#000000\"/>\n")
+          .Append("</svg>\n");
+    }
+
+    public byte[] ToUtf8SvgString(int border)
+    {
+        if (border < 0)
+            throw new ArgumentException("Border must be non-negative");
+
+        var header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"u8;
+        var header2 = "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n"u8;
+        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 "u8;
+        var svg2 = "\" stroke=\"none\">\n"u8;
+        var rect = "\t<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n"u8;
+        var path = "\t<path d=\""u8;
+        var space = " "u8;
+        var cell = "M"u8;
+        var cell2 = ","u8;
+        var cell3 = "h1v1h-1z"u8;
+        var endPath = "\" fill=\"#000000\"/>\n"u8;
+        var endSvg = "</svg>\n"u8;
+
+        var size = _size;
+        var estimatedSize = header.Length +
+            header2.Length +
+            svg.Length + 20 +
+            svg2.Length +
+            rect.Length +
+            path.Length +
+            (cell.Length + cell2.Length + cell3.Length + 20) * size * size +
+            endPath.Length +
+            endSvg.Length;
+
+        var arr = ArrayPool<byte>.Shared.Rent(estimatedSize);
+
+        var arrSpan = arr.AsSpan();
+        var pos = 0;
+
+        header.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(header.Length);
+        pos += header.Length;
+
+        header2.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(header2.Length);
+        pos += header2.Length;
+
+        svg.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(svg.Length);
+        pos += svg.Length;
+
+        var s = size + border * 2;
+
+        Utf8Formatter.TryFormat(s, arrSpan, out var written);
+        arrSpan = arrSpan.Slice(written);
+        pos += written;
+
+        space.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(space.Length);
+        pos += space.Length;
+
+        Utf8Formatter.TryFormat(s, arrSpan, out written);
+        arrSpan = arrSpan.Slice(written);
+        pos += written;
+
+        svg2.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(svg2.Length);
+        pos += svg2.Length;
+
+        rect.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(rect.Length);
+        pos += rect.Length;
+
+        path.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(path.Length);
+        pos += path.Length;
+
+        var modules = _modules;
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                if (modules[y, x])
+                {
+                    if (x != 0 || y != 0)
+                    {
+                        space.CopyTo(arrSpan);
+                        arrSpan = arrSpan.Slice(space.Length);
+                        pos += space.Length;
+                    }
+
+                    cell.CopyTo(arrSpan);
+                    arrSpan = arrSpan.Slice(cell.Length);
+                    pos += cell.Length;
+
+                    Utf8Formatter.TryFormat(x + border, arrSpan, out written);
+                    arrSpan = arrSpan.Slice(written);
+                    pos += written;
+
+                    cell2.CopyTo(arrSpan);
+                    arrSpan = arrSpan.Slice(cell2.Length);
+                    pos += cell2.Length;
+
+                    Utf8Formatter.TryFormat(y + border, arrSpan, out written);
+                    arrSpan = arrSpan.Slice(written);
+                    pos += written;
+
+                    cell3.CopyTo(arrSpan);
+                    arrSpan = arrSpan.Slice(cell3.Length);
+                    pos += cell3.Length;
+                }
+            }
+        }
+
+        endPath.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(endPath.Length);
+        pos += endPath.Length;
+
+        endSvg.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(endSvg.Length);
+        pos += endSvg.Length;
+
+        var bytes = new byte[pos];
+
+        arr.AsSpan(0, pos).CopyTo(bytes);
+
+        ArrayPool<byte>.Shared.Return(arr);
+
+        return bytes;
     }
 
     public static bool GetModule(int x, int y, int size, bool[,] modules) => 0 <= x && x < size && 0 <= y && y < size && modules[y, x];

@@ -3,7 +3,8 @@ using BenchmarkDotNet.Running;
 using QrCodeGenerator.Benchmark;
 
 BenchmarkSwitcher.FromTypes([
-    typeof(QrCodeEncodeBenchmarks)
+    typeof(QrCodeEncodeBenchmarks),
+    typeof(QrCodeRenderImageBenchmarks)
     ]).Run();
 
 Console.ReadLine();

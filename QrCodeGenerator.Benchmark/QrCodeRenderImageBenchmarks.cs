@@ -1,9 +1,11 @@
 ﻿using BenchmarkDotNet.Attributes;
+using SixLabors.ImageSharp;
+using System.Text;
 
 namespace QrCodeGenerator.Benchmark;
 
 [MemoryDiagnoser]
-public class QrCodeEncodeBenchmarks
+public class QrCodeRenderImageBenchmarks
 {
     [Params("Hello, world!",
         "314159265358979323846264338327950288419716939937510",
@@ -18,24 +20,44 @@ public class QrCodeEncodeBenchmarks
         )]
     public string Text { get; set; }
 
-    [Benchmark]
-    public QrCode EncodeTextLow()
+    private QrCode _qrCode;
+    private Image _image;
+
+    [GlobalSetup]
+    public void Setup()
     {
-        var qr = QrCode.EncodeText(Text, Ecc.Low);
-        return qr;
+        _qrCode = QrCode.EncodeText(Text, Ecc.Low);
+    }
+
+    [IterationCleanup]
+    public void CleanUp()
+    {
+        if (_image != null)
+        {
+            _image.Dispose();
+            _image = null;
+        }
     }
 
     [Benchmark]
-    public QrCode EncodeTextMedium()
+    public StringBuilder ToSvgStringBuilder()
     {
-        var qr = QrCode.EncodeText(Text, Ecc.Medium);
-        return qr;
+        var sb = new StringBuilder();
+        _qrCode.ToSvgStringBuilder(1, sb);
+        return sb;
     }
 
     [Benchmark]
-    public QrCode EncodeTextHigh()
+    public byte[] ToUtf8SvgString()
     {
-        var qr = QrCode.EncodeText(Text, Ecc.High);
-        return qr;
+        return _qrCode.ToUtf8SvgString(1);
+    }
+
+    [Benchmark]
+    public int ToImage()
+    {
+        var img = _qrCode.ToImage(10, 1);
+        _image = img;
+        return img.Width;
     }
 }
