@@ -33,6 +33,22 @@ public partial class QrCode
     const int MAX_ALIGN_PATTERN_POSITION = MAX_VERSION / 7 + 2;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static sbyte GetCodewordPerBlock(Ecc ecl, int version)
+    {
+        ref var ptr = ref MemoryMarshal.GetReference<sbyte[]>(ECC_CODEWORDS_PER_BLOCK);
+        ref var arr = ref MemoryMarshal.GetReference<sbyte>(Unsafe.Add(ref ptr, (int)ecl));
+        return Unsafe.Add(ref arr, version);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static sbyte GetErrorCorrectionBlocks(Ecc ecl, int version)
+    {
+        ref var ptr = ref MemoryMarshal.GetReference<sbyte[]>(NUM_ERROR_CORRECTION_BLOCKS);
+        ref var arr = ref MemoryMarshal.GetReference<sbyte>(Unsafe.Add(ref ptr, (int)ecl));
+        return Unsafe.Add(ref arr, version);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool GetBit(int x, int i) => ((x >> i) & 1) != 0;
 
     public static QrCode EncodeText(ReadOnlySpan<char> text, Ecc ecl)
@@ -113,8 +129,8 @@ public partial class QrCode
     public static int GetNumDataCodewords(int ver, Ecc ecl)
     {
         return GetNumRawDataModules(ver) / 8
-            - ECC_CODEWORDS_PER_BLOCK[(int)ecl][ver]
-            * NUM_ERROR_CORRECTION_BLOCKS[(int)ecl][ver];
+            - GetCodewordPerBlock(ecl, ver)
+            * GetErrorCorrectionBlocks(ecl, ver);
     }
 
     private static int GetNumRawDataModules(int ver)

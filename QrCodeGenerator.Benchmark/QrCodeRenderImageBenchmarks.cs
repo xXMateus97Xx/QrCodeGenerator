@@ -1,5 +1,4 @@
 ﻿using BenchmarkDotNet.Attributes;
-using SixLabors.ImageSharp;
 using System.Text;
 
 namespace QrCodeGenerator.Benchmark;
@@ -21,22 +20,11 @@ public class QrCodeRenderImageBenchmarks
     public string Text { get; set; }
 
     private QrCode _qrCode;
-    private Image _image;
 
     [GlobalSetup]
     public void Setup()
     {
         _qrCode = QrCode.EncodeText(Text, Ecc.Low);
-    }
-
-    [IterationCleanup]
-    public void CleanUp()
-    {
-        if (_image != null)
-        {
-            _image.Dispose();
-            _image = null;
-        }
     }
 
     [Benchmark]
@@ -56,8 +44,7 @@ public class QrCodeRenderImageBenchmarks
     [Benchmark]
     public int ToImage()
     {
-        var img = _qrCode.ToImage(10, 1);
-        _image = img;
+        using var img = _qrCode.ToImage(10, 1);
         return img.Width;
     }
 }

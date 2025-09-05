@@ -44,7 +44,7 @@ public partial class QrCode
 
     public string ToSvgString(int border)
     {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(10 * _size * _size);
         ToSvgStringBuilder(border, sb);
         return sb.ToString();
     }
@@ -245,8 +245,8 @@ public partial class QrCode
             throw new ArgumentException();
 
         // Calculate parameter numbers
-        var numBlocks = NUM_ERROR_CORRECTION_BLOCKS[(int)ecl][version];
-        var blockEccLen = ECC_CODEWORDS_PER_BLOCK[(int)ecl][version];
+        var numBlocks = GetErrorCorrectionBlocks(ecl, version);
+        var blockEccLen = GetCodewordPerBlock(ecl, version);
         var rawCodewords = result.Length;
         var numShortBlocks = numBlocks - rawCodewords % numBlocks;
         var shortBlockLen = rawCodewords / numBlocks;
