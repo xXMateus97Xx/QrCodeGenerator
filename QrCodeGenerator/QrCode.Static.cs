@@ -119,8 +119,9 @@ public partial class QrCode
 
         var dataCodewordsLength = bb.Length / 8;
         var dataCodewords = dataCodewordsLength <= 256 ? stackalloc byte[256] : new byte[dataCodewordsLength];
+        ref var dataCodewordsPtr = ref MemoryMarshal.GetReference(dataCodewords);
         for (var i = 0; i < bb.Length; i++)
-            dataCodewords[i >> 3] = (byte)(dataCodewords[i >> 3] | bb.GetBit(i) << (7 - (i & 7)));
+            Unsafe.Add(ref dataCodewordsPtr, i >> 3) = (byte)(Unsafe.Add(ref dataCodewordsPtr, i >> 3) | bb.GetBit(i) << (7 - (i & 7)));
 
         // Create the QR Code object
         return new QrCode(version, ecl, dataCodewords.Slice(0, dataCodewordsLength), mask);
