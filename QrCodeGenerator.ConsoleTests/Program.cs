@@ -29,8 +29,11 @@ class Program
         var svg = qr.ToSvgString(4);                  // Convert to SVG XML code
         File.WriteAllText("hello-world-QR.svg", svg); // Write image to file
 
-        var svg2 = qr.ToUtf8SvgString(4);                  // Convert to SVG XML code
+        var svg2 = qr.ToSvgUtf8String(4);                  // Convert to SVG XML code
         File.WriteAllBytes("hello-world-QR-u8.svg", svg2); // Write image to file
+
+        using var file = File.OpenWrite("hello-world-QR-u8-stream.svg");
+        qr.ToSvgUtf8Stream(4, file);
     }
 
 

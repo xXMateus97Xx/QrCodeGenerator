@@ -3,6 +3,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Buffers;
 using System.Buffers.Text;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -81,51 +82,94 @@ public partial class QrCode
           .Append("</svg>\n");
     }
 
-    public byte[] ToUtf8SvgString(int border)
+    public void ToSvgUtf8Stream(int border, Stream destiny)
     {
         if (border < 0)
             throw new ArgumentException("Border must be non-negative");
 
-        var header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"u8;
-        var header2 = "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n"u8;
-        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 "u8;
-        var svg2 = "\" stroke=\"none\">\n"u8;
-        var rect = "\t<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n"u8;
-        var path = "\t<path d=\""u8;
-        var space = " "u8;
-        var cell = "M"u8;
-        var cell2 = ","u8;
-        var cell3 = "h1v1h-1z"u8;
-        var endPath = "\" fill=\"#000000\"/>\n"u8;
-        var endSvg = "</svg>\n"u8;
+        destiny.Write(SVG_UTF8_HEADER);
+        destiny.Write(SVG_UTF8_HEADER2);
+        destiny.Write(SVG_UTF8_SVG);
 
         var size = _size;
-        var estimatedSize = header.Length +
-            header2.Length +
-            svg.Length + 20 +
-            svg2.Length +
-            rect.Length +
-            path.Length +
-            (cell.Length + cell2.Length + cell3.Length + 20) * size * size +
-            endPath.Length +
-            endSvg.Length;
+        var s = size + border * 2;
+
+        Span<byte> format = stackalloc byte[64];
+
+        Utf8Formatter.TryFormat(s, format, out var written);
+        destiny.Write(format.Slice(0, written));
+
+        destiny.Write(SVG_UTF8_SPACE);
+
+        Utf8Formatter.TryFormat(s, format, out written);
+        destiny.Write(format.Slice(0, written));
+
+        destiny.Write(SVG_UTF8_SVG2);
+        destiny.Write(SVG_UTF8_RECT);
+        destiny.Write(SVG_UTF8_PATH);
+
+        var modules = _modules;
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                if (modules[y, x])
+                {
+                    if (x != 0 || y != 0)
+                        destiny.Write(SVG_UTF8_SPACE);
+
+                    destiny.Write(SVG_UTF8_CELL);
+
+                    Utf8Formatter.TryFormat(x + border, format, out written);
+                    destiny.Write(format.Slice(0, written));
+
+                    destiny.Write(SVG_UTF8_CELL2);
+
+                    Utf8Formatter.TryFormat(y + border, format, out written);
+                    destiny.Write(format.Slice(0, written));
+
+                    destiny.Write(SVG_UTF8_CELL3);
+                }
+            }
+        }
+
+        destiny.Write(SVG_UTF8_END_PATH);
+        destiny.Write(SVG_UTF8_END_SVG);
+    }
+
+    public byte[] ToSvgUtf8String(int border)
+    {
+        if (border < 0)
+            throw new ArgumentException("Border must be non-negative");
+
+        var size = _size;
+        var estimatedSize = SVG_UTF8_HEADER.Length +
+            SVG_UTF8_HEADER2.Length +
+            SVG_UTF8_SVG.Length + 20 +
+            SVG_UTF8_SVG2.Length +
+            SVG_UTF8_RECT.Length +
+            SVG_UTF8_PATH.Length +
+            (SVG_UTF8_CELL.Length + SVG_UTF8_CELL2.Length + SVG_UTF8_CELL3.Length + 20) * size * size +
+            SVG_UTF8_END_PATH.Length +
+            SVG_UTF8_END_SVG.Length;
 
         var arr = ArrayPool<byte>.Shared.Rent(estimatedSize);
 
         var arrSpan = arr.AsSpan();
         var pos = 0;
 
-        header.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(header.Length);
-        pos += header.Length;
+        SVG_UTF8_HEADER.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_HEADER.Length);
+        pos += SVG_UTF8_HEADER.Length;
 
-        header2.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(header2.Length);
-        pos += header2.Length;
+        SVG_UTF8_HEADER2.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_HEADER2.Length);
+        pos += SVG_UTF8_HEADER2.Length;
 
-        svg.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(svg.Length);
-        pos += svg.Length;
+        SVG_UTF8_SVG.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_SVG.Length);
+        pos += SVG_UTF8_SVG.Length;
 
         var s = size + border * 2;
 
@@ -133,25 +177,25 @@ public partial class QrCode
         arrSpan = arrSpan.Slice(written);
         pos += written;
 
-        space.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(space.Length);
-        pos += space.Length;
+        SVG_UTF8_SPACE.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_SPACE.Length);
+        pos += SVG_UTF8_SPACE.Length;
 
         Utf8Formatter.TryFormat(s, arrSpan, out written);
         arrSpan = arrSpan.Slice(written);
         pos += written;
 
-        svg2.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(svg2.Length);
-        pos += svg2.Length;
+        SVG_UTF8_SVG2.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_SVG2.Length);
+        pos += SVG_UTF8_SVG2.Length;
 
-        rect.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(rect.Length);
-        pos += rect.Length;
+        SVG_UTF8_RECT.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_RECT.Length);
+        pos += SVG_UTF8_RECT.Length;
 
-        path.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(path.Length);
-        pos += path.Length;
+        SVG_UTF8_PATH.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_PATH.Length);
+        pos += SVG_UTF8_PATH.Length;
 
         var modules = _modules;
 
@@ -163,41 +207,41 @@ public partial class QrCode
                 {
                     if (x != 0 || y != 0)
                     {
-                        space.CopyTo(arrSpan);
-                        arrSpan = arrSpan.Slice(space.Length);
-                        pos += space.Length;
+                        SVG_UTF8_SPACE.CopyTo(arrSpan);
+                        arrSpan = arrSpan.Slice(SVG_UTF8_SPACE.Length);
+                        pos += SVG_UTF8_SPACE.Length;
                     }
 
-                    cell.CopyTo(arrSpan);
-                    arrSpan = arrSpan.Slice(cell.Length);
-                    pos += cell.Length;
+                    SVG_UTF8_CELL.CopyTo(arrSpan);
+                    arrSpan = arrSpan.Slice(SVG_UTF8_CELL.Length);
+                    pos += SVG_UTF8_CELL.Length;
 
                     Utf8Formatter.TryFormat(x + border, arrSpan, out written);
                     arrSpan = arrSpan.Slice(written);
                     pos += written;
 
-                    cell2.CopyTo(arrSpan);
-                    arrSpan = arrSpan.Slice(cell2.Length);
-                    pos += cell2.Length;
+                    SVG_UTF8_CELL2.CopyTo(arrSpan);
+                    arrSpan = arrSpan.Slice(SVG_UTF8_CELL2.Length);
+                    pos += SVG_UTF8_CELL2.Length;
 
                     Utf8Formatter.TryFormat(y + border, arrSpan, out written);
                     arrSpan = arrSpan.Slice(written);
                     pos += written;
 
-                    cell3.CopyTo(arrSpan);
-                    arrSpan = arrSpan.Slice(cell3.Length);
-                    pos += cell3.Length;
+                    SVG_UTF8_CELL3.CopyTo(arrSpan);
+                    arrSpan = arrSpan.Slice(SVG_UTF8_CELL3.Length);
+                    pos += SVG_UTF8_CELL3.Length;
                 }
             }
         }
 
-        endPath.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(endPath.Length);
-        pos += endPath.Length;
+        SVG_UTF8_END_PATH.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_END_PATH.Length);
+        pos += SVG_UTF8_END_PATH.Length;
 
-        endSvg.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(endSvg.Length);
-        pos += endSvg.Length;
+        SVG_UTF8_END_SVG.CopyTo(arrSpan);
+        arrSpan = arrSpan.Slice(SVG_UTF8_END_SVG.Length);
+        pos += SVG_UTF8_END_SVG.Length;
 
         var bytes = new byte[pos];
 

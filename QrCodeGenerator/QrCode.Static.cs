@@ -22,6 +22,19 @@ public partial class QrCode
         new sbyte[] {-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8,  8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68},  // Quartile
     };
 
+    private static ReadOnlySpan<byte> SVG_UTF8_HEADER => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_HEADER2 => "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_SVG => "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 "u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_SVG2 => "\" stroke=\"none\">\n"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_RECT => "\t<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_PATH => "\t<path d=\""u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_SPACE => " "u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_CELL => "M"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_CELL2 => ","u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_CELL3 => "h1v1h-1z"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_END_PATH => "\" fill=\"#000000\"/>\n"u8;
+    private static ReadOnlySpan<byte> SVG_UTF8_END_SVG => "</svg>\n"u8;
+
     public const int MIN_VERSION = 1;
     public const int MAX_VERSION = 40;
 

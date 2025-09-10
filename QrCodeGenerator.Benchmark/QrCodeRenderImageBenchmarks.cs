@@ -1,4 +1,5 @@
 ﻿using BenchmarkDotNet.Attributes;
+using System.Buffers;
 using System.Text;
 
 namespace QrCodeGenerator.Benchmark;
@@ -36,9 +37,19 @@ public class QrCodeRenderImageBenchmarks
     }
 
     [Benchmark]
-    public byte[] ToUtf8SvgString()
+    public byte[] ToSvgUtf8String()
     {
-        return _qrCode.ToUtf8SvgString(1);
+        return _qrCode.ToSvgUtf8String(1);
+    }
+
+    [Benchmark]
+    public MemoryStream ToSvgUtf8Stream()
+    {
+        var arr = ArrayPool<byte>.Shared.Rent(512000);
+        var ms = new MemoryStream(arr);
+        _qrCode.ToSvgUtf8Stream(1, ms);
+        ArrayPool<byte>.Shared.Return(arr);
+        return ms;
     }
 
     [Benchmark]
