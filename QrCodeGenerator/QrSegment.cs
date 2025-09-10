@@ -66,10 +66,10 @@ public sealed class QrSegment
                 var txt = MemoryMarshal.Cast<char, ushort>(text);
                 var vec = Vector256.Create(txt);
 
-                if (Vector256.LessThanAny(vec, min))
+                if (Vector256.GreaterThanAny(vec, max))
                     return false;
 
-                if (Vector256.GreaterThanAny(vec, max))
+                if (Vector256.LessThanAny(vec, min))
                     return false;
 
                 text = text.Slice(Vector256<ushort>.Count);
@@ -85,10 +85,10 @@ public sealed class QrSegment
                 var txt = MemoryMarshal.Cast<char, ushort>(text);
                 var vec = Vector128.Create(txt);
 
-                if (Vector128.LessThanAny(vec, min))
+                if (Vector128.GreaterThanAny(vec, max))
                     return false;
 
-                if (Vector128.GreaterThanAny(vec, max))
+                if (Vector128.LessThanAny(vec, min))
                     return false;
 
                 text = text.Slice(Vector128<ushort>.Count);
@@ -104,10 +104,10 @@ public sealed class QrSegment
                 var txt = MemoryMarshal.Cast<char, ushort>(text);
                 var vec = Vector64.Create(txt);
 
-                if (Vector64.LessThanAny(vec, min))
+                if (Vector64.GreaterThanAny(vec, max))
                     return false;
 
-                if (Vector64.GreaterThanAny(vec, max))
+                if (Vector64.LessThanAny(vec, min))
                     return false;
 
                 text = text.Slice(Vector64<ushort>.Count);
@@ -117,7 +117,7 @@ public sealed class QrSegment
         for (int i = 0; i < text.Length; i++)
         {
             var c = (ushort)text[i];
-            if (c < (ushort)'0' || c > (ushort)'9')
+            if (c > (ushort)'9' || c < (ushort)'0')
                 return false;
         }
 
