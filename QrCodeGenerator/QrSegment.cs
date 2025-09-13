@@ -1,14 +1,14 @@
 using System;
 using System.Buffers;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace QrCodeGenerator;
 
 public sealed class QrSegment
 {
-    public const string ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+    internal const string ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+    private static readonly SearchValues<char> _alphanumericCharsSearchValues = SearchValues.Create(ALPHANUMERIC_CHARSET);
 
     private readonly Mode _mode;
     private readonly BitBuffer _data;
@@ -55,73 +55,10 @@ public sealed class QrSegment
         return (int)result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsNumeric(ReadOnlySpan<char> text)
     {
-        if (Vector256.IsHardwareAccelerated && text.Length >= Vector256<ushort>.Count)
-        {
-            var min = Vector256.Create((ushort)'0');
-            var max = Vector256.Create((ushort)'9');
-            while (text.Length >= Vector256<ushort>.Count)
-            {
-                var txt = MemoryMarshal.Cast<char, ushort>(text);
-                var vec = Vector256.Create(txt);
-
-                if (Vector256.GreaterThanAny(vec, max))
-                    return false;
-
-                if (Vector256.LessThanAny(vec, min))
-                    return false;
-
-                text = text.Slice(Vector256<ushort>.Count);
-            }
-        }
-
-        if (Vector128.IsHardwareAccelerated && text.Length >= Vector128<ushort>.Count)
-        {
-            var min = Vector128.Create((ushort)'0');
-            var max = Vector128.Create((ushort)'9');
-            while (text.Length >= Vector128<ushort>.Count)
-            {
-                var txt = MemoryMarshal.Cast<char, ushort>(text);
-                var vec = Vector128.Create(txt);
-
-                if (Vector128.GreaterThanAny(vec, max))
-                    return false;
-
-                if (Vector128.LessThanAny(vec, min))
-                    return false;
-
-                text = text.Slice(Vector128<ushort>.Count);
-            }
-        }
-
-        if (Vector64.IsHardwareAccelerated && text.Length >= Vector64<ushort>.Count)
-        {
-            var min = Vector64.Create((ushort)'0');
-            var max = Vector64.Create((ushort)'9');
-            while (text.Length >= Vector64<ushort>.Count)
-            {
-                var txt = MemoryMarshal.Cast<char, ushort>(text);
-                var vec = Vector64.Create(txt);
-
-                if (Vector64.GreaterThanAny(vec, max))
-                    return false;
-
-                if (Vector64.LessThanAny(vec, min))
-                    return false;
-
-                text = text.Slice(Vector64<ushort>.Count);
-            }
-        }
-
-        for (int i = 0; i < text.Length; i++)
-        {
-            var c = (ushort)text[i];
-            if (c > (ushort)'9' || c < (ushort)'0')
-                return false;
-        }
-
-        return true;
+        return !text.ContainsAnyExceptInRange('0', '9');
     }
 
     public static QrSegment MakeNumeric(ReadOnlySpan<char> digits)
@@ -135,22 +72,22 @@ public sealed class QrSegment
     private static QrSegment MakeNumericCore(ReadOnlySpan<char> digits)
     {
         var bb = new BitBuffer();
-        for (int i = 0; i < digits.Length;)
-        {
-            var n = Math.Min(digits.Length - i, 3);
-            bb.AppendBits(int.Parse(digits.Slice(i, n)), n * 3 + 1);
-            i += n;
-        }
+        var len = digits.Length;
+        var iterations = len - len % 3;
+        int i = 0;
+        for (; i < iterations; i += 3)
+            bb.AppendBits(int.Parse(digits.Slice(i, 3)), 3 * 3 + 1);
+
+        if (i < len)
+            bb.AppendBits(int.Parse(digits.Slice(i)), (len - i) * 3 + 1);
+
         return new QrSegment(Mode.NUMERIC, digits.Length, bb, false);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAlphanumeric(ReadOnlySpan<char> text)
     {
-        for (int j = 0; j < text.Length; j++)
-            if (!ALPHANUMERIC_CHARSET.Contains(text[j]))
-                return false;
-
-        return true;
+        return !text.ContainsAnyExcept(_alphanumericCharsSearchValues);
     }
 
     public static QrSegment MakeAlphanumeric(ReadOnlySpan<char> text)
@@ -244,7 +181,7 @@ public sealed class QrSegment
     {
         var bb = new BitBuffer();
         for (int i = 0; i < data.Length; i++)
-            bb.AppendBits(data[i] & 0xFF, 8);
+            bb.AppendBits(data[i], 8);
 
         return new QrSegment(Mode.BYTE, data.Length, bb, false);
     }
