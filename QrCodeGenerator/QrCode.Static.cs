@@ -64,6 +64,12 @@ public partial class QrCode
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool GetBit(int x, int i) => ((x >> i) & 1) != 0;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool GetBit(uint x, int i) => ((x >> i) & 1) != 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool GetBit(ulong x, int i) => ((x >> i) & 1) != 0;
+
     public static QrCode EncodeText(ReadOnlySpan<char> text, Ecc ecl)
     {
         var segs = QrSegment.MakeSegments(text);

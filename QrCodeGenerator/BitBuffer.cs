@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Collections;
 
 namespace QrCodeGenerator;
@@ -56,6 +57,61 @@ public readonly struct BitBuffer
         {
             var bit = QrCode.GetBit(val, i);
             data.Set(position, bit);
+        }
+    }
+
+    public void AppendBytes(ReadOnlySpan<byte> bytes)
+    {
+        var data = _data;
+
+        var position = data.Length;
+        data.Length += bytes.Length * 8;
+
+        while (bytes.Length >= sizeof(ulong))
+        {
+            var val = BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(0, sizeof(ulong)));
+            bytes = bytes.Slice(sizeof(ulong));
+
+            for (var i = sizeof(ulong) * 8 - 1; i >= 0; i--, position++)
+            {
+                var bit = QrCode.GetBit(val, i);
+                data.Set(position, bit);
+            }
+        }
+
+        if (bytes.Length >= sizeof(uint))
+        {
+            var val = BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(0, sizeof(uint)));
+            bytes = bytes.Slice(sizeof(uint));
+
+            for (var i = sizeof(uint) * 8 - 1; i >= 0; i--, position++)
+            {
+                var bit = QrCode.GetBit(val, i);
+                data.Set(position, bit);
+            }
+        }
+
+        if (bytes.Length >= sizeof(ushort))
+        {
+            var val = BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(0, sizeof(ushort)));
+            bytes = bytes.Slice(sizeof(ushort));
+
+            for (var i = sizeof(ushort) * 8 - 1; i >= 0; i--, position++)
+            {
+                var bit = QrCode.GetBit(val, i);
+                data.Set(position, bit);
+            }
+        }
+
+        if (bytes.Length >= sizeof(byte))
+        {
+            var val = bytes[0];
+
+            for (var i = sizeof(byte) * 8 - 1; i >= 0; i--, position++)
+            {
+                var bit = QrCode.GetBit(val, i);
+                data.Set(position, bit);
+            }
         }
     }
 }

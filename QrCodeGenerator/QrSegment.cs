@@ -180,8 +180,7 @@ public sealed class QrSegment
     public static QrSegment MakeBytes(ReadOnlySpan<byte> data)
     {
         var bb = new BitBuffer();
-        for (int i = 0; i < data.Length; i++)
-            bb.AppendBits(data[i], 8);
+        bb.AppendBytes(data);
 
         return new QrSegment(Mode.BYTE, data.Length, bb, false);
     }
