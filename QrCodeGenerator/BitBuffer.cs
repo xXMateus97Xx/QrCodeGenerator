@@ -41,6 +41,39 @@ public readonly struct BitBuffer
             data.Set(position, bb._data[i]);
     }
 
+    public void AppendAlphanumeric(ReadOnlySpan<char> text)
+    {
+        var data = _data;
+        var position = data.Length;
+        var len = text.Length;
+        var size = (len / 2) * 11 + (len % 2 * 6);
+
+        data.Length += size;
+
+        int i;
+        for (i = 0; i <= text.Length - 2; i += 2)
+        {
+            var val = QrSegment.ALPHANUMERIC_CHARSET.IndexOf(text[i]) * 45;
+            val += QrSegment.ALPHANUMERIC_CHARSET.IndexOf(text[i + 1]);
+
+            for (var p = 10; p >= 0; p--, position++)
+            {
+                var bit = QrCode.GetBit(val, p);
+                data.Set(position, bit);
+            }
+        }
+
+        if (i < text.Length)
+        {
+            var val = QrSegment.ALPHANUMERIC_CHARSET.IndexOf(text[i]);
+            for (var p = 5; p >= 0; p--, position++)
+            {
+                var bit = QrCode.GetBit(val, p);
+                data.Set(position, bit);
+            }
+        }
+    }
+
     public void AppendBits(int val, int len)
     {
         if (len < 0 || len > 31 || val >> len != 0)
@@ -57,6 +90,44 @@ public readonly struct BitBuffer
         {
             var bit = QrCode.GetBit(val, i);
             data.Set(position, bit);
+        }
+    }
+
+    public void AppendNumeric(ReadOnlySpan<char> digits)
+    {
+        var data = _data;
+        var position = data.Length;
+        var len = digits.Length;
+        var calculatedLength = (len / 3) * 10;
+        var lastBytes = 0;
+        if (len % 3 > 0)
+        {
+            lastBytes = ((len - ((len - 1) - ((len - 1) % 3))) * 3 + 1);
+            calculatedLength += lastBytes;
+        }
+
+        data.Length += calculatedLength;
+
+        while (digits.Length >= 3)
+        {
+            var val = ushort.Parse(digits.Slice(0, 3));
+            digits = digits.Slice(3);
+
+            for (var i = 9; i >= 0; i--, position++)
+            {
+                var bit = QrCode.GetBit(val, i);
+                data.Set(position, bit);
+            }
+        }
+
+        if (digits.Length > 0)
+        {
+            var val = ushort.Parse(digits);
+            for (var i = lastBytes - 1; i >= 0; i--, position++)
+            {
+                var bit = QrCode.GetBit(val, i);
+                data.Set(position, bit);
+            }
         }
     }
 

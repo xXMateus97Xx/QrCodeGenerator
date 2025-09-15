@@ -65,6 +65,12 @@ public partial class QrCode
     public static bool GetBit(int x, int i) => ((x >> i) & 1) != 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool GetBit(byte x, int i) => ((x >> i) & 1) != 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool GetBit(ushort x, int i) => ((x >> i) & 1) != 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool GetBit(uint x, int i) => ((x >> i) & 1) != 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

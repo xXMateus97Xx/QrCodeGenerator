@@ -72,14 +72,7 @@ public sealed class QrSegment
     private static QrSegment MakeNumericCore(ReadOnlySpan<char> digits)
     {
         var bb = new BitBuffer();
-        var len = digits.Length;
-        var iterations = len - len % 3;
-        int i = 0;
-        for (; i < iterations; i += 3)
-            bb.AppendBits(int.Parse(digits.Slice(i, 3)), 3 * 3 + 1);
-
-        if (i < len)
-            bb.AppendBits(int.Parse(digits.Slice(i)), (len - i) * 3 + 1);
+        bb.AppendNumeric(digits);
 
         return new QrSegment(Mode.NUMERIC, digits.Length, bb, false);
     }
@@ -101,16 +94,7 @@ public sealed class QrSegment
     private static QrSegment MakeAlphanumericCore(ReadOnlySpan<char> text)
     {
         var bb = new BitBuffer();
-        int i;
-        for (i = 0; i <= text.Length - 2; i += 2)
-        {
-            var temp = ALPHANUMERIC_CHARSET.IndexOf(text[i]) * 45;
-            temp += ALPHANUMERIC_CHARSET.IndexOf(text[i + 1]);
-            bb.AppendBits(temp, 11);
-        }
-
-        if (i < text.Length)
-            bb.AppendBits(ALPHANUMERIC_CHARSET.IndexOf(text[i]), 6);
+        bb.AppendAlphanumeric(text);
 
         return new QrSegment(Mode.ALPHANUMERIC, text.Length, bb, false);
     }

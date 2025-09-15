@@ -14,7 +14,8 @@ public class QrCodeEncodeBenchmarks
             + "for the hot day made her feel very sleepy and stupid), whether the pleasure of making a "
             + "daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly "
             + "a White Rabbit with pink eyes ran close by her.",
-        "維基百科（Wikipedia，聆聽i/ˌwɪkᵻˈpiːdi.ə/）是一個自由內容、公開編輯且多語言的網路百科全書協作計畫"
+        "維基百科（Wikipedia，聆聽i/ˌwɪkᵻˈpiːdi.ə/）是一個自由內容、公開編輯且多語言的網路百科全書協作計畫",
+        "DOLLAR-AMOUNT:$39.87 PERCENTAGE:100.00% OPERATIONS:+-*/"
         )]
     public string Text { get; set; }
 
