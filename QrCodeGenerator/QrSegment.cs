@@ -14,12 +14,7 @@ public sealed class QrSegment
     private readonly BitBuffer _data;
     private readonly int _numChars;
 
-    public QrSegment(Mode md, int numCh, BitBuffer data)
-        : this(md, numCh, data, true)
-    {
-    }
-
-    internal QrSegment(Mode md, int numCh, BitBuffer data, bool cloneData)
+    internal QrSegment(Mode md, int numCh, BitBuffer data)
     {
         Utils.CheckNull(md, nameof(md));
 
@@ -28,10 +23,10 @@ public sealed class QrSegment
 
         _mode = md;
         _numChars = numCh;
-        _data = cloneData ? new BitBuffer(data) : data;
+        _data = data;
     }
 
-    public BitBuffer Data => new BitBuffer(_data);
+    public ReadOnlyBitBuffer Data => new ReadOnlyBitBuffer(_data);
     public Mode Mode => _mode;
     public int NumChars => _numChars;
 
@@ -74,7 +69,7 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         bb.AppendNumeric(digits);
 
-        return new QrSegment(Mode.NUMERIC, digits.Length, bb, false);
+        return new QrSegment(Mode.NUMERIC, digits.Length, bb);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -96,7 +91,7 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         bb.AppendAlphanumeric(text);
 
-        return new QrSegment(Mode.ALPHANUMERIC, text.Length, bb, false);
+        return new QrSegment(Mode.ALPHANUMERIC, text.Length, bb);
     }
 
     public static ReadOnlyMemory<QrSegment> MakeSegments(ReadOnlySpan<char> text)
@@ -158,7 +153,7 @@ public sealed class QrSegment
             throw new ArgumentException("ECI assignment value out of range");
         }
 
-        return new QrSegment(Mode.ECI, 0, bb, false);
+        return new QrSegment(Mode.ECI, 0, bb);
     }
 
     public static QrSegment MakeBytes(ReadOnlySpan<byte> data)
@@ -166,6 +161,6 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         bb.AppendBytes(data);
 
-        return new QrSegment(Mode.BYTE, data.Length, bb, false);
+        return new QrSegment(Mode.BYTE, data.Length, bb);
     }
 }

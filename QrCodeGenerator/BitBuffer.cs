@@ -4,6 +4,20 @@ using System.Collections;
 
 namespace QrCodeGenerator;
 
+public readonly struct ReadOnlyBitBuffer
+{
+    internal readonly BitBuffer _buffer;
+
+    public ReadOnlyBitBuffer(BitBuffer buffer)
+    {
+        _buffer = buffer;
+    }
+
+    public int Length => _buffer.Length;
+
+    public int GetBit(int index) => _buffer.GetBit(index);
+}
+
 public readonly struct BitBuffer
 {
     private readonly BitArray _data;
@@ -11,11 +25,6 @@ public readonly struct BitBuffer
     public BitBuffer()
     {
         _data = new BitArray(0);
-    }
-
-    public BitBuffer(BitBuffer bitBuffer)
-    {
-        _data = new BitArray(bitBuffer._data);
     }
 
     public int Length => _data.Length;
@@ -39,6 +48,19 @@ public readonly struct BitBuffer
 
         for (var i = 0; i < bb.Length; i++, position++)
             data.Set(position, bb._data[i]);
+    }
+
+    public void AppendData(ReadOnlyBitBuffer bb)
+    {
+        var data = _data;
+        if (int.MaxValue - data.Length < bb.Length)
+            throw new ArithmeticException("Maximum length reached");
+
+        var position = data.Length;
+        data.Length += bb.Length;
+
+        for (var i = 0; i < bb.Length; i++, position++)
+            data.Set(position, bb._buffer._data[i]);
     }
 
     public void AppendAlphanumeric(ReadOnlySpan<char> text)

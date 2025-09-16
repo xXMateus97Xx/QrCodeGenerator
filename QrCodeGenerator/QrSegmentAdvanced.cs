@@ -80,7 +80,7 @@ public static class QrSegmentAdvanced
             var val = Unsafe.Add(ref unicodeToKanji, text[i]);
             bb.AppendBits(val, 13);
         }
-        return new QrSegment(Mode.KANJI, text.Length, bb, false);
+        return new QrSegment(Mode.KANJI, text.Length, bb);
     }
 
     public static bool IsEncodableAsKanji(ReadOnlySpan<char> text)
