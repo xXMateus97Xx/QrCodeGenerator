@@ -111,16 +111,13 @@ public partial class QrCode
 
         if (boostEcl)
         {
-            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.Low) * 8)
-                ecl = Ecc.Low;
-
-            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.Medium) * 8)
+            if (ecl == Ecc.Low && dataUsedBits <= GetNumDataCodewords(version, Ecc.Medium) * 8)
                 ecl = Ecc.Medium;
 
-            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.Quartitle) * 8)
+            if ((ecl == Ecc.Low || ecl == Ecc.Medium) && dataUsedBits <= GetNumDataCodewords(version, Ecc.Quartitle) * 8)
                 ecl = Ecc.Quartitle;
 
-            if (dataUsedBits <= GetNumDataCodewords(version, Ecc.High) * 8)
+            if ((ecl == Ecc.Low || ecl == Ecc.Medium || ecl == Ecc.Quartitle) && dataUsedBits <= GetNumDataCodewords(version, Ecc.High) * 8)
                 ecl = Ecc.High;
         }
 
@@ -129,18 +126,36 @@ public partial class QrCode
         {
             var seg = segs.Span[i];
             var mode = seg.Mode;
-            bb.AppendBits(mode.ModeBits, 4);
-            bb.AppendBits(seg.NumChars, mode.NumCharCountBits(version));
+            var bits = mode.ModeBits;
+            var count = mode.NumCharCountBits(version);
+            bits = bits << count;
+            bits |= seg.NumChars;
+            bb.AppendBits(bits, count + 4);
             bb.AppendData(seg.Data);
         }
 
         var dataCapacityBits = GetNumDataCodewords(version, ecl) * 8;
 
-        bb.AppendBits(0, Math.Min(4, dataCapacityBits - bb.Length));
-        bb.AppendBits(0, (8 - bb.Length % 8) % 8);
+        var p = Math.Min(4, dataCapacityBits - bb.Length);
+        bb.AppendBits(0UL, p + ((8 - (bb.Length + p) % 8) % 8));
 
-        for (var padByte = 0xEC; bb.Length < dataCapacityBits; padByte ^= 0xEC ^ 0x11)
-            bb.AppendBits(padByte, 8);
+        var missingPadding = dataCapacityBits - bb.Length;
+
+        ulong paddingByte = 0xEC;
+        while (missingPadding > 0)
+        {
+            var size = 0;
+            ulong padding = 0;
+            for (; size < sizeof(ulong) * 8 && size < missingPadding; size += sizeof(byte) * 8)
+            {
+                padding = padding << sizeof(byte) * 8;
+                padding |= paddingByte;
+                paddingByte ^= 0xEC ^ 0x11;
+            }
+
+            bb.AppendBits(padding, size);
+            missingPadding -= size;
+        }
 
         var dataCodewordsLength = bb.Length / 8;
         var dataCodewords = dataCodewordsLength <= 256 ? stackalloc byte[256] : new byte[dataCodewordsLength];

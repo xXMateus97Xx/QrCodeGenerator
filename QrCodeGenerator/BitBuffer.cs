@@ -115,6 +115,25 @@ public readonly struct BitBuffer
         }
     }
 
+    public void AppendBits(ulong val, int len)
+    {
+        if (len < 0 || len > 64)
+            throw new ArgumentException("Value out of range");
+
+        var data = _data;
+        if (int.MaxValue - data.Length < len)
+            throw new ArithmeticException("Maximum length reached");
+
+        var position = data.Length;
+        data.Length += len;
+
+        for (var i = len - 1; i >= 0; i--, position++)  // Append bit by bit
+        {
+            var bit = QrCode.GetBit(val, i);
+            data.Set(position, bit);
+        }
+    }
+
     public void AppendNumeric(ReadOnlySpan<char> digits)
     {
         var data = _data;
