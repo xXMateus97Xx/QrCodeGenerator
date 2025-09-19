@@ -658,6 +658,7 @@ public partial class QrCode
         return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void FinderPenaltyAddHistory(int currentRunLength, Span<int> runHistory)
     {
         if (runHistory[0] == 0)
