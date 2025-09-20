@@ -546,28 +546,59 @@ public partial class QrCode
         var size = _size;
         var modules = _modules;
 
-        for (var y = 0; y < size; y++)
+        if (msk == 0)
         {
-            for (var x = 0; x < size; x++)
-            {
-                var invert = false;
-                if (!isFunction[y, x])
-                {
-                    switch (msk)
-                    {
-                        case 0: invert = (x + y).IsEven(); break;
-                        case 1: invert = y.IsEven(); break;
-                        case 2: invert = x % 3 == 0; break;
-                        case 3: invert = (x + y) % 3 == 0; break;
-                        case 4: invert = (x / 3 + y / 2) % 2 == 0; break;
-                        case 5: invert = x * y % 2 + x * y % 3 == 0; break;
-                        case 6: invert = (x * y % 2 + x * y % 3) % 2 == 0; break;
-                        case 7: invert = ((x + y) % 2 + x * y % 3) % 2 == 0; break;
-                        default: invert = false; break;
-                    }
-                }
-                modules[y, x] ^= invert;
-            }
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && (x + y).IsEven();
+        }
+        else if (msk == 1)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && y.IsEven();
+        }
+        else if (msk == 2)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && x % 3 == 0;
+        }
+        else if (msk == 3)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && (x + y) % 3 == 0;
+        }
+        else if (msk == 4)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && (x / 3 + y / 2) % 2 == 0;
+        }
+        else if (msk == 5)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && x * y % 2 + x * y % 3 == 0;
+        }
+        else if (msk == 6)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && (x * y % 2 + x * y % 3) % 2 == 0;
+        }
+        else if (msk == 7)
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= !isFunction[y, x] && ((x + y) % 2 + x * y % 3) % 2 == 0;
+        }
+        else
+        {
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    modules[y, x] ^= false;
         }
     }
 
