@@ -550,20 +550,23 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                bool invert;
-                switch (msk)
+                var invert = false;
+                if (!isFunction[y, x])
                 {
-                    case 0: invert = (x + y).IsEven(); break;
-                    case 1: invert = y.IsEven(); break;
-                    case 2: invert = x % 3 == 0; break;
-                    case 3: invert = (x + y) % 3 == 0; break;
-                    case 4: invert = (x / 3 + y / 2) % 2 == 0; break;
-                    case 5: invert = x * y % 2 + x * y % 3 == 0; break;
-                    case 6: invert = (x * y % 2 + x * y % 3) % 2 == 0; break;
-                    case 7: invert = ((x + y) % 2 + x * y % 3) % 2 == 0; break;
-                    default: invert = false; break;
+                    switch (msk)
+                    {
+                        case 0: invert = (x + y).IsEven(); break;
+                        case 1: invert = y.IsEven(); break;
+                        case 2: invert = x % 3 == 0; break;
+                        case 3: invert = (x + y) % 3 == 0; break;
+                        case 4: invert = (x / 3 + y / 2) % 2 == 0; break;
+                        case 5: invert = x * y % 2 + x * y % 3 == 0; break;
+                        case 6: invert = (x * y % 2 + x * y % 3) % 2 == 0; break;
+                        case 7: invert = ((x + y) % 2 + x * y % 3) % 2 == 0; break;
+                        default: invert = false; break;
+                    }
                 }
-                modules[y, x] ^= invert & !isFunction[y, x];
+                modules[y, x] ^= invert;
             }
         }
     }
