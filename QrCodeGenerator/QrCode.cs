@@ -678,12 +678,8 @@ public partial class QrCode
             }
         }
 
-        var black = 0;
-        foreach (var color in modules)
-        {
-            if (color)
-                black++;
-        }
+        var span = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, bool>(ref MemoryMarshal.GetArrayDataReference(modules)), modules.Length);
+        var black = span.Count(true);
 
         var total = size * size;
         var k = (Math.Abs(black * 20 - total * 10) + total - 1) / total - 1;
