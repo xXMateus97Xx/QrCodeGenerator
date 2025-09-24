@@ -181,7 +181,7 @@ public readonly struct BitBuffer
 
         while (bytes.Length >= sizeof(ulong))
         {
-            var val = BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(0, sizeof(ulong)));
+            var val = BinaryPrimitives.ReadUInt64BigEndian(bytes);
             bytes = bytes.Slice(sizeof(ulong));
 
             for (var i = sizeof(ulong) * 8 - 1; i >= 0; i--, position++)
@@ -193,7 +193,7 @@ public readonly struct BitBuffer
 
         if (bytes.Length >= sizeof(uint))
         {
-            var val = BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(0, sizeof(uint)));
+            var val = BinaryPrimitives.ReadUInt32BigEndian(bytes);
             bytes = bytes.Slice(sizeof(uint));
 
             for (var i = sizeof(uint) * 8 - 1; i >= 0; i--, position++)
@@ -205,7 +205,7 @@ public readonly struct BitBuffer
 
         if (bytes.Length >= sizeof(ushort))
         {
-            var val = BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(0, sizeof(ushort)));
+            var val = BinaryPrimitives.ReadUInt16BigEndian(bytes);
             bytes = bytes.Slice(sizeof(ushort));
 
             for (var i = sizeof(ushort) * 8 - 1; i >= 0; i--, position++)
