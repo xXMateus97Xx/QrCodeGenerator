@@ -298,7 +298,8 @@ public partial class QrCode
         // Split data into blocks and append ECC to each block
         var blocks = new byte[numBlocks][];
         ref var blocksPtr = ref MemoryMarshal.GetReference<byte[]>(blocks);
-        Span<byte> rsDiv = stackalloc byte[blockEccLen];
+        Span<byte> rsDiv = stackalloc byte[MAX_ECC_CODEWORKS_PER_BLOCK];
+        rsDiv = rsDiv.Slice(0, blockEccLen);
         ReedSolomonComputeDivisor(rsDiv);
 
         for (int i = 0, k = 0; i < numBlocks; i++)
