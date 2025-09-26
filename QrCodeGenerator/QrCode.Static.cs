@@ -224,11 +224,29 @@ public partial class QrCode
     private static int ReedSolomonMultiply(int x, int y)
     {
         var z = 0;
-        for (var i = 7; i >= 0; i--)
-        {
-            z = (z << 1) ^ ((z >> 7) * 0x11D);
-            z ^= ((y >> i) & 1) * x;
-        }
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 7) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 6) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 5) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 4) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 3) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 2) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 1) & 1) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 0) & 1) * x;
 
         return z;
     }
