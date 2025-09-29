@@ -240,7 +240,6 @@ public partial class QrCode
         pos += SVG_UTF8_END_PATH.Length;
 
         SVG_UTF8_END_SVG.CopyTo(arrSpan);
-        arrSpan = arrSpan.Slice(SVG_UTF8_END_SVG.Length);
         pos += SVG_UTF8_END_SVG.Length;
 
         var bytes = new byte[pos];
@@ -317,7 +316,7 @@ public partial class QrCode
         }
 
         // Interleave (not concatenate) the bytes from every block into a single sequence
-        ref var resultPtr = ref MemoryMarshal.GetReference<byte>(result);
+        ref var resultPtr = ref MemoryMarshal.GetReference(result);
         for (int i = 0, k = 0; i < blocks[0].Length; i++)
         {
             for (int j = 0; j < blocks.Length; j++)
@@ -589,17 +588,11 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                     modules[y, x] ^= !isFunction[y, x] && (x * y % 2 + x * y % 3) % 2 == 0;
         }
-        else if (msk == 7)
-        {
-            for (var y = 0; y < size; y++)
-                for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && ((x + y) % 2 + x * y % 3) % 2 == 0;
-        }
         else
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= false;
+                    modules[y, x] ^= !isFunction[y, x] && ((x + y) % 2 + x * y % 3) % 2 == 0;
         }
     }
 

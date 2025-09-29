@@ -131,10 +131,9 @@ public sealed class QrSegment
     {
         var bb = new BitBuffer();
         if (assignVal < 0)
-        {
             throw new ArgumentException("ECI assignment value out of range");
-        }
-        else if (assignVal < (1 << 7))
+        
+        if (assignVal < (1 << 7))
         {
             bb.AppendBits(assignVal, 8);
         }
