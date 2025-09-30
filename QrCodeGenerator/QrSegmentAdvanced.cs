@@ -20,13 +20,11 @@ public static class QrSegmentAdvanced
 
         Array.Fill<short>(UNICODE_TO_QR_KANJI, -1);
 
-        var length = (int)(3 * (s.Length / 4)) - 2;
-
         ref var unicodeToKanji = ref MemoryMarshal.GetReference<short>(UNICODE_TO_QR_KANJI);
 
         Span<byte> bs = stackalloc byte[2];
 
-        for (var i = 0; i < length; i += 2)
+        for (var i = 0; i < s.Length; i += 2)
         {
             s.Read(bs);
 
