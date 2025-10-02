@@ -11,7 +11,7 @@ namespace QrCodeGenerator;
 
 public static class QrSegmentAdvanced
 {
-    private static readonly short[] UNICODE_TO_QR_KANJI = new short[1 << 16];
+    private static readonly short[] UNICODE_TO_QR_KANJI = GC.AllocateUninitializedArray<short>(1 << 16);
 
     // Data derived from ftp://ftp.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/JIS/SHIFTJIS.TXT
     static QrSegmentAdvanced()
@@ -22,13 +22,13 @@ public static class QrSegmentAdvanced
 
         ref var unicodeToKanji = ref MemoryMarshal.GetReference<short>(UNICODE_TO_QR_KANJI);
 
-        Span<byte> bs = stackalloc byte[2];
+        Span<byte> bytes = stackalloc byte[2];
 
         for (var i = 0; i < s.Length; i += 2)
         {
-            s.Read(bs);
+            s.Read(bytes);
 
-            var c = BinaryPrimitives.ReadUInt16BigEndian(bs);
+            var c = BinaryPrimitives.ReadUInt16BigEndian(bytes);
             if (c == 0xFFFF)
                 continue;
 
