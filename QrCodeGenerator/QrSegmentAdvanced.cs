@@ -58,7 +58,7 @@ public static class QrSegmentAdvanced
             {
                 var msg = "Segment too long";
                 if (dataUsedBits != -1)
-                    msg = String.Format("Data length = {0} bits, Max capacity = {1} bits", dataUsedBits, dataCapacityBits);
+                    msg = string.Format("Data length = {0} bits, Max capacity = {1} bits", dataUsedBits, dataCapacityBits);
                 throw new DataTooLongException(msg);
             }
         }
