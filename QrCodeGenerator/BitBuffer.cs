@@ -4,14 +4,9 @@ using System.Collections;
 
 namespace QrCodeGenerator;
 
-public readonly struct ReadOnlyBitBuffer
+public readonly struct ReadOnlyBitBuffer(BitBuffer buffer)
 {
-    internal readonly BitBuffer _buffer;
-
-    public ReadOnlyBitBuffer(BitBuffer buffer)
-    {
-        _buffer = buffer;
-    }
+    internal readonly BitBuffer _buffer = buffer;
 
     public int Length => _buffer.Length;
 

@@ -5,14 +5,9 @@ using System.Text.Encodings.Web;
 
 namespace QrCodeGenerator.Mvc;
 
-class StringBuilderHtmlContent : IHtmlContent
+class StringBuilderHtmlContent(StringBuilder sb) : IHtmlContent
 {
-    private readonly StringBuilder _sb;
-
-    public StringBuilderHtmlContent(StringBuilder sb)
-    {
-        _sb = sb;
-    }
+    private readonly StringBuilder _sb = sb;
 
     public void WriteTo(TextWriter writer, HtmlEncoder encoder)
     {

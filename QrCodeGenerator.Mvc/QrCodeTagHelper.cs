@@ -10,14 +10,9 @@ namespace QrCodeGenerator.Mvc;
 [HtmlTargetElement("qrcode", Attributes = "data,border", TagStructure = TagStructure.WithoutEndTag)]
 [HtmlTargetElement("qrcode", Attributes = "data,scale", TagStructure = TagStructure.WithoutEndTag)]
 [HtmlTargetElement("qrcode", Attributes = "data,scale,border", TagStructure = TagStructure.WithoutEndTag)]
-public class QrCodeTagHelper : TagHelper
+public class QrCodeTagHelper(QrCodeConfiguration configuration) : TagHelper
 {
-    private readonly QrCodeConfiguration _configuration;
-
-    public QrCodeTagHelper(QrCodeConfiguration configuration)
-    {
-        _configuration = configuration;
-    }
+    private readonly QrCodeConfiguration _configuration = configuration;
 
     [HtmlAttributeName("data")]
     public string Data { get; set; }

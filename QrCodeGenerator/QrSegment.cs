@@ -26,7 +26,7 @@ public sealed class QrSegment
         _data = data;
     }
 
-    public ReadOnlyBitBuffer Data => new ReadOnlyBitBuffer(_data);
+    public ReadOnlyBitBuffer Data => new(_data);
     public Mode Mode => _mode;
     public int NumChars => _numChars;
 
@@ -132,7 +132,7 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         if (assignVal < 0)
             throw new ArgumentException("ECI assignment value out of range");
-        
+
         if (assignVal < (1 << 7))
         {
             bb.AppendBits(assignVal, 8);
