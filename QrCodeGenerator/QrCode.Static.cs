@@ -213,7 +213,7 @@ public partial class QrCode
         {
             for (var j = 0; j < result.Length; j++)
             {
-                result[j] = (byte)ReedSolomonMultiply(result[j] & 0xFF, root);
+                result[j] = (byte)ReedSolomonMultiply(result[j], root);
                 if (j + 1 < result.Length)
                     result[j] ^= result[j + 1];
             }
