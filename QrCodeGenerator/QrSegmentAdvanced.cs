@@ -26,7 +26,7 @@ public static class QrSegmentAdvanced
 
         for (var i = 0; i < s.Length; i += 2)
         {
-            s.Read(bytes);
+            s.ReadExactly(bytes);
 
             var c = BinaryPrimitives.ReadUInt16BigEndian(bytes);
             if (c == 0xFFFF)
@@ -122,7 +122,7 @@ public static class QrSegmentAdvanced
                 charModes[i, 0] = modeTypes[0];
             }
 
-            if (QrSegment.ALPHANUMERIC_CHARSET.IndexOf((char)c) != -1)
+            if (QrSegment.ALPHANUMERIC_CHARSET.Contains((char)c))
             {
                 curCosts[1] = prevCosts[1] + 33;
                 charModes[i, 1] = modeTypes[1];

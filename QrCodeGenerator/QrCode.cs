@@ -72,7 +72,7 @@ public partial class QrCode
                 if (modules[y, x])
                 {
                     if (x != 0 || y != 0)
-                        sb.Append(" ");
+                        sb.Append(' ');
                     sb.AppendFormat("M{0},{1}h1v1h-1z", x + border, y + border);
                 }
             }
@@ -608,7 +608,7 @@ public partial class QrCode
         {
             var runColor = false;
             var runX = 0;
-            runHistory.Fill(0);
+            runHistory.Clear();
 
             for (int x = 0; x < size; x++)
             {
@@ -636,7 +636,7 @@ public partial class QrCode
         {
             var runColor = false;
             var runY = 0;
-            runHistory.Fill(0);
+            runHistory.Clear();
 
             for (int y = 0; y < size; y++)
             {

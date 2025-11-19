@@ -20,7 +20,7 @@ public class QrCodeConfiguration
     public Ecc ErrorCorrectionLevel { get; init; }
     public QrCodeFormat Format { get; init; }
 
-    private T ParseConfiguration<T>(IConfiguration configuration, string key, T @default = default) where T : struct
+    private static T ParseConfiguration<T>(IConfiguration configuration, string key, T @default = default) where T : struct
     {
         var configString = configuration[key];
         if (!string.IsNullOrWhiteSpace(configString))
