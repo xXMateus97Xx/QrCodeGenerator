@@ -340,8 +340,8 @@ public partial class QrCode
 
         for (var i = 0; i < size; i++)
         {
-            SetFunctionModule(6, i, i % 2 == 0, modules, isFunction);
-            SetFunctionModule(i, 6, i % 2 == 0, modules, isFunction);
+            SetFunctionModule(6, i, i.IsEven(), modules, isFunction);
+            SetFunctionModule(i, 6, i.IsEven(), modules, isFunction);
         }
 
         // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
@@ -574,25 +574,25 @@ public partial class QrCode
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x / 3 + y / 2) % 2 == 0;
+                    modules[y, x] ^= !isFunction[y, x] && (x / 3 + y / 2).IsEven();
         }
         else if (msk == 5)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && x * y % 2 + x * y % 3 == 0;
+                    modules[y, x] ^= !isFunction[y, x] && ((x * y) & 1) + x * y % 3 == 0;
         }
         else if (msk == 6)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x * y % 2 + x * y % 3) % 2 == 0;
+                    modules[y, x] ^= !isFunction[y, x] && ((x * y & 1) + x * y % 3).IsEven();
         }
         else
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && ((x + y) % 2 + x * y % 3) % 2 == 0;
+                    modules[y, x] ^= !isFunction[y, x] && (((x + y) & 1) + x * y % 3).IsEven();
         }
     }
 

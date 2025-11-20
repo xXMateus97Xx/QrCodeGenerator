@@ -16,7 +16,7 @@ public sealed class QrSegment
 
     internal QrSegment(Mode md, int numCh, BitBuffer data)
     {
-        Utils.CheckNull(md, nameof(md));
+        ArgumentNullException.ThrowIfNull(md);
 
         if (numCh < 0)
             throw new ArgumentException("Invalid value");
@@ -36,7 +36,7 @@ public sealed class QrSegment
         for (int i = 0; i < segs.Length; i++)
         {
             var seg = segs.Span[i];
-            Utils.CheckNull(seg, nameof(seg));
+            ArgumentNullException.ThrowIfNull(seg);
 
             var ccbits = seg.Mode.NumCharCountBits(version);
             if (seg.NumChars >= (1 << ccbits))

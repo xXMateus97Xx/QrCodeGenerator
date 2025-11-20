@@ -38,7 +38,7 @@ public static class QrSegmentAdvanced
 
     public static ReadOnlyMemory<QrSegment> MakeSegmentsOptimally(string text, Ecc ecl, int minVersion, int maxVersion)
     {
-        Utils.CheckNull(text, nameof(text));
+        ArgumentNullException.ThrowIfNull(text);
 
         if (!(QrCode.MIN_VERSION <= minVersion && minVersion <= maxVersion && maxVersion <= QrCode.MAX_VERSION))
             throw new ArgumentException("Invalid value");

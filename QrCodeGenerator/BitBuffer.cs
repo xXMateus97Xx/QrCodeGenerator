@@ -63,7 +63,7 @@ public readonly struct BitBuffer
         var data = _data;
         var position = data.Length;
         var len = text.Length;
-        var size = (len / 2) * 11 + (len % 2 * 6);
+        var size = (len / 2) * 11 + ((len & 1) * 6);
 
         data.Length += size;
 
