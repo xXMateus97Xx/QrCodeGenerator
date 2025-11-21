@@ -12,7 +12,7 @@ public class Mode
     public static readonly Mode KANJI = new(0x8, [8, 10, 12]);
     public static readonly Mode ECI = new(0x7, [0, 0, 0]);
 
-    public static readonly ReadOnlyMemory<Mode> All = new[] { Mode.BYTE, Mode.ALPHANUMERIC, Mode.NUMERIC, Mode.KANJI };
+    public static readonly ReadOnlyMemory<Mode> All = new[] { BYTE, ALPHANUMERIC, NUMERIC, KANJI };
 
     private readonly int _modeBits;
     private readonly int[] _numBitsCharCount;
