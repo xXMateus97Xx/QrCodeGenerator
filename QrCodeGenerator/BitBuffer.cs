@@ -26,9 +26,6 @@ public readonly struct BitBuffer
 
     public int GetBit(int index)
     {
-        if (index < 0 || index >= Length)
-            throw new IndexOutOfRangeException();
-
         return _data[index] ? 1 : 0;
     }
 

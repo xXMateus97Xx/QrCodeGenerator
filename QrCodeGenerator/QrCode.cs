@@ -18,13 +18,8 @@ public partial class QrCode
     private readonly int _mask;
     private readonly bool[,] _modules;
 
-    public QrCode(int ver, Ecc ecl, ReadOnlySpan<byte> dataCodewords, int msk)
+    private QrCode(int ver, Ecc ecl, ReadOnlySpan<byte> dataCodewords, int msk)
     {
-        if (ver < MIN_VERSION || ver > MAX_VERSION)
-            throw new ArgumentException("Version value out of range");
-        if (msk < -1 || msk > 7)
-            throw new ArgumentException("Mask value out of range");
-
         _version = ver;
         _size = ver * 4 + 17;
         _errorCorrectionLevel = ecl;
@@ -296,7 +291,7 @@ public partial class QrCode
 
         // Split data into blocks and append ECC to each block
         var blocks = new byte[numBlocks][];
-        ref var blocksPtr = ref MemoryMarshal.GetReference<byte[]>(blocks);
+        ref var blocksPtr = ref MemoryMarshal.GetReference(blocks);
         Span<byte> rsDiv = stackalloc byte[MAX_ECC_CODEWORKS_PER_BLOCK];
         rsDiv = rsDiv.Slice(0, blockEccLen);
         ReedSolomonComputeDivisor(rsDiv);
@@ -324,7 +319,7 @@ public partial class QrCode
                 if (i != shortBlockLen - blockEccLen || j >= numShortBlocks)
                 {
                     ref var block = ref Unsafe.Add(ref blocksPtr, j);
-                    ref var item = ref MemoryMarshal.GetReference<byte>(block);
+                    ref var item = ref MemoryMarshal.GetReference(block);
                     item = Unsafe.Add(ref item, i);
                     Unsafe.Add(ref resultPtr, k) = item;
                     k++;

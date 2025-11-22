@@ -20,7 +20,7 @@ public static class QrSegmentAdvanced
 
         Array.Fill<short>(UNICODE_TO_QR_KANJI, -1);
 
-        ref var unicodeToKanji = ref MemoryMarshal.GetReference<short>(UNICODE_TO_QR_KANJI);
+        ref var unicodeToKanji = ref MemoryMarshal.GetReference(UNICODE_TO_QR_KANJI);
 
         Span<byte> bytes = stackalloc byte[2];
 
@@ -69,7 +69,7 @@ public static class QrSegmentAdvanced
         if (!IsEncodableAsKanji(text))
             throw new ArgumentException("String contains non-kanji-mode characters");
 
-        ref var unicodeToKanji = ref MemoryMarshal.GetReference<short>(UNICODE_TO_QR_KANJI);
+        ref var unicodeToKanji = ref MemoryMarshal.GetReference(UNICODE_TO_QR_KANJI);
         var bb = new BitBuffer();
         for (int i = 0; i < text.Length; i++)
         {

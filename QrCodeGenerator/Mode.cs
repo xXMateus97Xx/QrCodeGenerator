@@ -25,5 +25,5 @@ public class Mode
 
     public int ModeBits => _modeBits;
 
-    public int NumCharCountBits(int ver) => Unsafe.Add(ref MemoryMarshal.GetReference<int>(_numBitsCharCount), (int)(Math.Floor((ver + 7) / 17d)));
+    public int NumCharCountBits(int ver) => Unsafe.Add(ref MemoryMarshal.GetReference(_numBitsCharCount), (int)Math.Floor((ver + 7) / 17d));
 }
