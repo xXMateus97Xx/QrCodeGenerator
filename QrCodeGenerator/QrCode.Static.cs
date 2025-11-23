@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace QrCodeGenerator;
 
@@ -208,6 +209,12 @@ public partial class QrCode
 
         result[degree - 1] = 1;
 
+        if (Vector128.IsHardwareAccelerated)
+        {
+            ReedSolomonComputeDivisorFast(result);
+            return;
+        }
+
         var root = 1;
         for (int i = 0; i < degree; i++)
         {
@@ -220,6 +227,89 @@ public partial class QrCode
 
             root = ReedSolomonMultiply(root, 0x02);
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReedSolomonComputeDivisorFast(Span<byte> result)
+    {
+        var degree = result.Length;
+
+        var root = 1;
+        for (int i = 0; i < degree; i++)
+        {
+            var copy = result;
+            var rootVec = Vector128.Create(root);
+
+            while (copy.Length >= Vector128<int>.Count)
+            {
+                var v = Vector128.Create(copy[0], copy[1], copy[2], copy[3]);
+                v = ReedSolomonMultiply(v, rootVec);
+
+                if (copy.Length > Vector128<int>.Count)
+                {
+                    var v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4]);
+                    v ^= v2;
+                }
+                else
+                {
+                    v = v.WithElement(0, v[0] ^ copy[1]);
+                    v = v.WithElement(1, v[1] ^ copy[2]);
+                    v = v.WithElement(2, v[2] ^ copy[3]);
+                }
+
+                copy[0] = (byte)v[0];
+                copy[1] = (byte)v[1];
+                copy[2] = (byte)v[2];
+                copy[3] = (byte)v[3];
+
+                copy = copy.Slice(Vector128<int>.Count);
+            }
+
+            if (copy.Length > 0)
+            {
+                for (var j = 0; j < copy.Length; j++)
+                {
+                    copy[j] = (byte)ReedSolomonMultiply(copy[j], root);
+                    if (j + 1 < copy.Length)
+                        copy[j] ^= copy[j + 1];
+                }
+            }
+
+            root = ReedSolomonMultiply(root, 0x02);
+        }
+    }
+
+    private static Vector128<int> ReedSolomonMultiply(Vector128<int> x, Vector128<int> y)
+    {
+        if (x == Vector128<int>.Zero)
+            return Vector128<int>.Zero;
+
+        var z = Vector128<int>.Zero;
+        var one = Vector128<int>.One;
+        z ^= Vector128.BitwiseAnd(y >> 7, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y >> 6, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y >> 5, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y >> 4, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y >> 3, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y >> 2, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y >> 1, one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= Vector128.BitwiseAnd(y, one) * x;
+
+        return z;
     }
 
     private static int ReedSolomonMultiply(int x, int y)
