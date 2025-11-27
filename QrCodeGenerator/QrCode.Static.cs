@@ -248,22 +248,13 @@ public partial class QrCode
                     var v = Vector256.Create(copy[0], copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7]);
                     v = ReedSolomonMultiply(v, rootVec);
 
+                    Vector256<int> v2;
                     if (copy.Length > Vector256<int>.Count)
-                    {
-                        var v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8]);
-                        v ^= v2;
-                    }
+                        v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8]);
                     else
-                    {
-                        v = v.WithElement(0, v[0] ^ copy[1]);
-                        v = v.WithElement(1, v[1] ^ copy[2]);
-                        v = v.WithElement(2, v[2] ^ copy[3]);
-                        v = v.WithElement(3, v[3] ^ copy[4]);
-                        v = v.WithElement(4, v[4] ^ copy[5]);
-                        v = v.WithElement(5, v[5] ^ copy[6]);
-                        v = v.WithElement(6, v[6] ^ copy[7]);
-                    }
+                        v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], 0);
 
+                    v ^= v2;
                     var byteV = v.AsByte();
 
                     copy[0] = byteV[0];
@@ -288,18 +279,13 @@ public partial class QrCode
                     var v = Vector128.Create(copy[0], copy[1], copy[2], copy[3]);
                     v = ReedSolomonMultiply(v, rootVec);
 
+                    Vector128<int> v2;
                     if (copy.Length > Vector128<int>.Count)
-                    {
-                        var v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4]);
-                        v ^= v2;
-                    }
+                        v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4]);
                     else
-                    {
-                        v = v.WithElement(0, v[0] ^ copy[1]);
-                        v = v.WithElement(1, v[1] ^ copy[2]);
-                        v = v.WithElement(2, v[2] ^ copy[3]);
-                    }
+                        v2 = Vector128.Create(copy[1], copy[2], copy[3], 0);
 
+                    v ^= v2;
                     var byteV = v.AsByte();
 
                     copy[0] = byteV[0];
