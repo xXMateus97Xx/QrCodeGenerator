@@ -209,7 +209,7 @@ public partial class QrCode
 
         result[degree - 1] = 1;
 
-        if (Vector128.IsHardwareAccelerated)
+        if (Vector128.IsHardwareAccelerated || Vector256.IsHardwareAccelerated)
         {
             ReedSolomonComputeDivisorFast(result);
             return;
@@ -238,31 +238,77 @@ public partial class QrCode
         for (int i = 0; i < degree; i++)
         {
             var copy = result;
-            var rootVec = Vector128.Create(root);
 
-            while (copy.Length >= Vector128<int>.Count)
+            if (Vector256.IsHardwareAccelerated && copy.Length >= Vector256<int>.Count)
             {
-                var v = Vector128.Create(copy[0], copy[1], copy[2], copy[3]);
-                v = ReedSolomonMultiply(v, rootVec);
+                var rootVec = Vector256.Create(root);
 
-                if (copy.Length > Vector128<int>.Count)
+                while (copy.Length >= Vector256<int>.Count)
                 {
-                    var v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4]);
-                    v ^= v2;
+                    var v = Vector256.Create(copy[0], copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7]);
+                    v = ReedSolomonMultiply(v, rootVec);
+
+                    if (copy.Length > Vector256<int>.Count)
+                    {
+                        var v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8]);
+                        v ^= v2;
+                    }
+                    else
+                    {
+                        v = v.WithElement(0, v[0] ^ copy[1]);
+                        v = v.WithElement(1, v[1] ^ copy[2]);
+                        v = v.WithElement(2, v[2] ^ copy[3]);
+                        v = v.WithElement(3, v[3] ^ copy[4]);
+                        v = v.WithElement(4, v[4] ^ copy[5]);
+                        v = v.WithElement(5, v[5] ^ copy[6]);
+                        v = v.WithElement(6, v[6] ^ copy[7]);
+                    }
+
+                    var byteV = v.AsByte();
+
+                    copy[0] = byteV[0];
+                    copy[1] = byteV[4];
+                    copy[2] = byteV[8];
+                    copy[3] = byteV[12];
+                    copy[4] = byteV[16];
+                    copy[5] = byteV[20];
+                    copy[6] = byteV[24];
+                    copy[7] = byteV[28];
+
+                    copy = copy.Slice(Vector256<int>.Count);
                 }
-                else
+            }
+
+            if (Vector128.IsHardwareAccelerated && copy.Length >= Vector128<int>.Count)
+            {
+                var rootVec = Vector128.Create(root);
+
+                while (copy.Length >= Vector128<int>.Count)
                 {
-                    v = v.WithElement(0, v[0] ^ copy[1]);
-                    v = v.WithElement(1, v[1] ^ copy[2]);
-                    v = v.WithElement(2, v[2] ^ copy[3]);
+                    var v = Vector128.Create(copy[0], copy[1], copy[2], copy[3]);
+                    v = ReedSolomonMultiply(v, rootVec);
+
+                    if (copy.Length > Vector128<int>.Count)
+                    {
+                        var v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4]);
+                        v ^= v2;
+                    }
+                    else
+                    {
+                        v = v.WithElement(0, v[0] ^ copy[1]);
+                        v = v.WithElement(1, v[1] ^ copy[2]);
+                        v = v.WithElement(2, v[2] ^ copy[3]);
+                    }
+
+                    var byteV = v.AsByte();
+
+                    copy[0] = byteV[0];
+                    copy[1] = byteV[4];
+                    copy[2] = byteV[8];
+                    copy[3] = byteV[12];
+
+                    copy = copy.Slice(Vector128<int>.Count);
                 }
-
-                copy[0] = (byte)v[0];
-                copy[1] = (byte)v[1];
-                copy[2] = (byte)v[2];
-                copy[3] = (byte)v[3];
-
-                copy = copy.Slice(Vector128<int>.Count);
             }
 
             if (copy.Length > 0)
@@ -286,28 +332,61 @@ public partial class QrCode
 
         var z = Vector128<int>.Zero;
         var one = Vector128<int>.One;
-        z ^= Vector128.BitwiseAnd(y >> 7, one) * x;
+        z ^= ((y >> 7) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y >> 6, one) * x;
+        z ^= ((y >> 6) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y >> 5, one) * x;
+        z ^= ((y >> 5) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y >> 4, one) * x;
+        z ^= ((y >> 4) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y >> 3, one) * x;
+        z ^= ((y >> 3) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y >> 2, one) * x;
+        z ^= ((y >> 2) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y >> 1, one) * x;
+        z ^= ((y >> 1) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
-        z ^= Vector128.BitwiseAnd(y, one) * x;
+        z ^= (y & one) * x;
+
+        return z;
+    }
+
+    private static Vector256<int> ReedSolomonMultiply(Vector256<int> x, Vector256<int> y)
+    {
+        if (x == Vector256<int>.Zero)
+            return Vector256<int>.Zero;
+
+        var z = Vector256<int>.Zero;
+        var one = Vector256<int>.One;
+        z ^= ((y >> 7) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 6) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 5) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 4) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 3) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 2) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= ((y >> 1) & one) * x;
+
+        z = (z << 1) ^ ((z >> 7) * 0x11D);
+        z ^= (y & one) * x;
 
         return z;
     }
