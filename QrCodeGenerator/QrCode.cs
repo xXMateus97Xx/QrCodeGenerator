@@ -145,7 +145,7 @@ public partial class QrCode
             SVG_UTF8_SVG2.Length +
             SVG_UTF8_RECT.Length +
             SVG_UTF8_PATH.Length +
-            (SVG_UTF8_CELL.Length + SVG_UTF8_CELL2.Length + SVG_UTF8_CELL3.Length + 20) * size * size +
+            ((SVG_UTF8_CELL.Length + SVG_UTF8_CELL2.Length + SVG_UTF8_CELL3.Length + 20) * size * size) +
             SVG_UTF8_END_PATH.Length +
             SVG_UTF8_END_SVG.Length;
 
@@ -294,7 +294,7 @@ public partial class QrCode
         ref var blocksPtr = ref MemoryMarshal.GetReference(blocks);
         Span<byte> rsDiv = stackalloc byte[MAX_ECC_CODEWORKS_PER_BLOCK];
         rsDiv = rsDiv.Slice(0, blockEccLen);
-        ReedSolomonComputeDivisor(rsDiv);
+        ReedSolomon.ReedSolomonComputeDivisor(rsDiv);
 
         for (int i = 0, k = 0; i < numBlocks; i++)
         {
@@ -304,7 +304,7 @@ public partial class QrCode
             var dat = data.Slice(k).Slice(0, datLength);
             dat.CopyTo(block);
 
-            ReedSolomonComputeRemainder(dat, rsDiv, block.AsSpan(block.Length - blockEccLen));
+            ReedSolomon.ReedSolomonComputeRemainder(dat, rsDiv, block.AsSpan(block.Length - blockEccLen));
 
             k += datLength;
             Unsafe.Add(ref blocksPtr, i) = block;

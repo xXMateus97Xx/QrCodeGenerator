@@ -6,7 +6,8 @@ BenchmarkSwitcher.FromTypes([
     typeof(QrCodeEncodeEccLowBenchmarks),
     typeof(QrCodeEncodeEccMediumBenchmarks),
     typeof(QrCodeEncodeEccHighBenchmarks),
-    typeof(QrCodeRenderImageBenchmarks)
+    typeof(QrCodeRenderImageBenchmarks),
+    typeof(ReedSolomonBenchmarks),
     ]).Run();
 
 Console.ReadLine();
