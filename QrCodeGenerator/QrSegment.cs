@@ -1,6 +1,9 @@
 using System;
 using System.Buffers;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -161,5 +164,43 @@ public sealed class QrSegment
         bb.AppendBytes(data);
 
         return new QrSegment(Mode.BYTE, data.Length, bb);
+    }
+
+    internal static int GetAlphanumericIndexOf(char c)
+    {
+        if (!Vector256.IsHardwareAccelerated)
+            return ALPHANUMERIC_CHARSET.IndexOf(c);
+
+        var charVec = Vector256.Create((ushort)c);
+
+        ref var ptr = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(ALPHANUMERIC_CHARSET.AsSpan()));
+        var vec = Vector256.LoadUnsafe(ref ptr);
+
+        var result = Vector256.Equals(vec, charVec);
+        var mask = Vector256.ExtractMostSignificantBits(result);
+
+        var idx = BitOperations.TrailingZeroCount(mask);
+        if (idx < Vector256<ushort>.Count)
+            return idx;
+
+        vec = Vector256.LoadUnsafe(ref Unsafe.Add(ref ptr, Vector256<ushort>.Count));
+
+        result = Vector256.Equals(vec, charVec);
+        mask = Vector256.ExtractMostSignificantBits(result);
+
+        idx = BitOperations.TrailingZeroCount(mask);
+        if (idx < Vector256<ushort>.Count)
+            return idx + Vector256<ushort>.Count;
+
+        vec = Vector256.LoadUnsafe(ref Unsafe.Add(ref ptr, ALPHANUMERIC_CHARSET.Length - Vector256<ushort>.Count));
+
+        result = Vector256.Equals(vec, charVec);
+        mask = Vector256.ExtractMostSignificantBits(result);
+
+        idx = BitOperations.TrailingZeroCount(mask);
+        if (idx < Vector256<ushort>.Count)
+            return idx + ALPHANUMERIC_CHARSET.Length - Vector256<ushort>.Count;
+
+        return -1;
     }
 }

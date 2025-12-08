@@ -67,8 +67,8 @@ public readonly struct BitBuffer
         int i;
         for (i = 0; i <= text.Length - 2; i += 2)
         {
-            var val = QrSegment.ALPHANUMERIC_CHARSET.IndexOf(text[i]) * 45;
-            val += QrSegment.ALPHANUMERIC_CHARSET.IndexOf(text[i + 1]);
+            var val = QrSegment.GetAlphanumericIndexOf(text[i]) * 45;
+            val += QrSegment.GetAlphanumericIndexOf(text[i + 1]);
 
             for (var p = 10; p >= 0; p--, position++)
             {
@@ -79,7 +79,7 @@ public readonly struct BitBuffer
 
         if (i < text.Length)
         {
-            var val = QrSegment.ALPHANUMERIC_CHARSET.IndexOf(text[i]);
+            var val = QrSegment.GetAlphanumericIndexOf(text[i]);
             for (var p = 5; p >= 0; p--, position++)
             {
                 var bit = QrCode.GetBit(val, p);
