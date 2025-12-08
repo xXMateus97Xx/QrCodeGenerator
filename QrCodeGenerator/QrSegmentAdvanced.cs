@@ -76,7 +76,7 @@ public static class QrSegmentAdvanced
             var val = Unsafe.Add(ref unicodeToKanji, text[i]);
             bb.AppendBits(val, 13);
         }
-        return new QrSegment(Mode.KANJI, text.Length, bb);
+        return new QrSegment(Mode.Kanji, text.Length, bb);
     }
 
     public static bool IsEncodableAsKanji(ReadOnlySpan<char> text)
@@ -143,7 +143,7 @@ public static class QrSegmentAdvanced
                 for (int k = 0; k < numModes; k++)
                 {
                     var newCost = (curCosts[k] + 5) / 6 * 6 + headCosts[j];
-                    if (charModes[i, k] != null && (charModes[i, j] == null || newCost < curCosts[j]))
+                    if (charModes[i, k] != default && (charModes[i, j] == default || newCost < curCosts[j]))
                     {
                         curCosts[j] = newCost;
                         charModes[i, j] = modeTypes[k];
@@ -154,10 +154,10 @@ public static class QrSegmentAdvanced
             prevCosts = curCosts;
         }
 
-        Mode curMode = null;
+        Mode curMode = default;
         for (int i = 0, minCost = 0; i < numModes; i++)
         {
-            if (curMode == null || prevCosts[i] < minCost)
+            if (curMode == default || prevCosts[i] < minCost)
             {
                 minCost = prevCosts[i];
                 curMode = modeTypes[i];
@@ -196,13 +196,13 @@ public static class QrSegmentAdvanced
                 continue;
 
             var s = FromCodePoint(codePoints, start, i - start);
-            if (curMode == Mode.BYTE)
+            if (curMode == Mode.Byte)
                 result.Add(QrSegment.MakeBytes(Encoding.UTF8.GetBytes(s)));
-            else if (curMode == Mode.NUMERIC)
+            else if (curMode == Mode.Numeric)
                 result.Add(QrSegment.MakeNumeric(s));
-            else if (curMode == Mode.ALPHANUMERIC)
+            else if (curMode == Mode.Alphanumeric)
                 result.Add(QrSegment.MakeAlphanumeric(s));
-            else if (curMode == Mode.KANJI)
+            else if (curMode == Mode.Kanji)
                 result.Add(MakeKanji(s));
             else
                 throw new ApplicationException();

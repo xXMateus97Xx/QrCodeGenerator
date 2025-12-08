@@ -19,8 +19,6 @@ public sealed class QrSegment
 
     internal QrSegment(Mode md, int numCh, BitBuffer data)
     {
-        ArgumentNullException.ThrowIfNull(md);
-
         if (numCh < 0)
             throw new ArgumentException("Invalid value");
 
@@ -72,7 +70,7 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         bb.AppendNumeric(digits);
 
-        return new QrSegment(Mode.NUMERIC, digits.Length, bb);
+        return new QrSegment(Mode.Numeric, digits.Length, bb);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -94,7 +92,7 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         bb.AppendAlphanumeric(text);
 
-        return new QrSegment(Mode.ALPHANUMERIC, text.Length, bb);
+        return new QrSegment(Mode.Alphanumeric, text.Length, bb);
     }
 
     public static ReadOnlyMemory<QrSegment> MakeSegments(ReadOnlySpan<char> text)
@@ -163,7 +161,7 @@ public sealed class QrSegment
         var bb = new BitBuffer();
         bb.AppendBytes(data);
 
-        return new QrSegment(Mode.BYTE, data.Length, bb);
+        return new QrSegment(Mode.Byte, data.Length, bb);
     }
 
     internal static int GetAlphanumericIndexOf(char c)

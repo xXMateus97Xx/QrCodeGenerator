@@ -4,26 +4,40 @@ using System.Runtime.InteropServices;
 
 namespace QrCodeGenerator;
 
-public class Mode
+public enum Mode
 {
-    public static readonly Mode NUMERIC = new(0x1, [10, 12, 14]);
-    public static readonly Mode ALPHANUMERIC = new(0x2, [9, 11, 13]);
-    public static readonly Mode BYTE = new(0x4, [8, 16, 16]);
-    public static readonly Mode KANJI = new(0x8, [8, 10, 12]);
-    public static readonly Mode ECI = new(0x7, [0, 0, 0]);
+    Numeric = 1,
+    Alphanumeric = 2,
+    Byte = 4,
+    Kanji = 8,
+    ECI = 7
+}
 
-    public static readonly ReadOnlyMemory<Mode> All = new[] { BYTE, ALPHANUMERIC, NUMERIC, KANJI };
+public static class ModeExtensions
+{
+    private static readonly int[] CharCountBits =
+        [
+            -1, -1, -1,
+            10, 12, 14,
+             9, 11, 13,
+            -1, -1, -1,
+             8, 16, 16,
+            -1, -1, -1,
+            -1, -1, -1,
+             0,  0,  0,
+             8,  10, 12
+        ];
 
-    private readonly int _modeBits;
-    private readonly int[] _numBitsCharCount;
+    private static readonly ReadOnlyMemory<Mode> _all = new[] { Mode.Byte, Mode.Alphanumeric, Mode.Numeric, Mode.Kanji };
 
-    private Mode(int modeBits, int[] numBitsCharCount)
+    public static int NumCharCountBits(this Mode mode, int ver)
     {
-        _modeBits = modeBits;
-        _numBitsCharCount = numBitsCharCount;
+        var pos = (int)mode * 3 + (int)Math.Floor((ver + 7) / 17d);
+        return Unsafe.Add(ref MemoryMarshal.GetReference(CharCountBits), pos);
     }
 
-    public int ModeBits => _modeBits;
-
-    public int NumCharCountBits(int ver) => Unsafe.Add(ref MemoryMarshal.GetReference(_numBitsCharCount), (int)Math.Floor((ver + 7) / 17d));
+    extension(Mode)
+    {
+        public static ReadOnlyMemory<Mode> All => _all;
+    }
 }

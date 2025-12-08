@@ -128,7 +128,7 @@ public partial class QrCode
         {
             var seg = segs.Span[i];
             var mode = seg.Mode;
-            var bits = mode.ModeBits;
+            var bits = (int)mode;
             var count = mode.NumCharCountBits(version);
             bits = bits << count;
             bits |= seg.NumChars;
