@@ -143,7 +143,7 @@ public readonly struct BitBuffer
 
         while (digits.Length >= 3)
         {
-            var val = ushort.Parse(digits.Slice(0, 3));
+            var val = (digits[0] - '0') * 100 + (digits[1] - '0') * 10 + (digits[2] - '0');
             digits = digits.Slice(3);
 
             for (var i = 9; i >= 0; i--, position++)
@@ -155,7 +155,13 @@ public readonly struct BitBuffer
 
         if (digits.Length > 0)
         {
-            var val = ushort.Parse(digits);
+            var val = digits[0] - '0';
+            if (digits.Length == 2)
+            {
+                val *= 10;
+                val += digits[1] - '0';
+            }
+
             for (var i = lastBytes - 1; i >= 0; i--, position++)
             {
                 var bit = QrCode.GetBit(val, i);
