@@ -139,13 +139,15 @@ public partial class QrCode
             throw new ArgumentException("Border must be non-negative");
 
         var size = _size;
+        var s = size + border * 2;
+        var sStringSize = ((int)Math.Log10(s)) + 1;
         var estimatedSize = SVG_UTF8_HEADER.Length +
             SVG_UTF8_HEADER2.Length +
-            SVG_UTF8_SVG.Length + 20 +
+            SVG_UTF8_SVG.Length + sStringSize +
             SVG_UTF8_SVG2.Length +
             SVG_UTF8_RECT.Length +
             SVG_UTF8_PATH.Length +
-            ((SVG_UTF8_CELL.Length + SVG_UTF8_CELL2.Length + SVG_UTF8_CELL3.Length + 20) * size * size) +
+            ((SVG_UTF8_CELL.Length + SVG_UTF8_CELL2.Length + SVG_UTF8_CELL3.Length + sStringSize) * size * size) +
             SVG_UTF8_END_PATH.Length +
             SVG_UTF8_END_SVG.Length;
 
@@ -165,8 +167,6 @@ public partial class QrCode
         SVG_UTF8_SVG.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_SVG.Length);
         pos += SVG_UTF8_SVG.Length;
-
-        var s = size + border * 2;
 
         Utf8Formatter.TryFormat(s, arrSpan, out var written);
         arrSpan = arrSpan.Slice(written);
