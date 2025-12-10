@@ -140,7 +140,7 @@ public partial class QrCode
 
         var size = _size;
         var s = size + border * 2;
-        var sStringSize = ((int)Math.Log10(s)) + 1;
+        var sStringSize = ((int)Math.Floor(Math.Log10(s))) + 1;
         var estimatedSize = SVG_UTF8_HEADER.Length +
             SVG_UTF8_HEADER2.Length +
             SVG_UTF8_SVG.Length + sStringSize +
