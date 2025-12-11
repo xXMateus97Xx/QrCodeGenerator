@@ -6,6 +6,7 @@ using System.Buffers.Text;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -24,16 +25,17 @@ public partial class QrCode
         _size = ver * 4 + 17;
         _errorCorrectionLevel = ecl;
         _modules = new bool[_size, _size];
+        var modulesReverse = new bool[_size, _size];
         var isFunction = new bool[_size, _size];
 
-        DrawFunctionPatterns(isFunction);
+        DrawFunctionPatterns(modulesReverse, isFunction);
         var rawCodewords = GetNumRawDataModules(ver) / 8;
         byte[] pooledArray = null;
         Span<byte> allCodewords = rawCodewords <= 512 ? stackalloc byte[512] : (pooledArray = ArrayPool<byte>.Shared.Rent(rawCodewords));
         allCodewords = allCodewords.Slice(0, rawCodewords);
         AddEccAndInterleave(dataCodewords, allCodewords);
-        DrawCodewords(allCodewords, isFunction);
-        _mask = HandleConstructorMasking(msk, isFunction);
+        DrawCodewords(allCodewords, modulesReverse, isFunction);
+        _mask = HandleConstructorMasking(msk, modulesReverse, isFunction);
         if (pooledArray != null)
             ArrayPool<byte>.Shared.Return(pooledArray);
     }
@@ -140,7 +142,7 @@ public partial class QrCode
 
         var size = _size;
         var s = size + border * 2;
-        var sStringSize = ((int)Math.Floor(Math.Log10(s))) + 1;
+        var sStringSize = (((int)Math.Floor(Math.Log10(s))) + 1) * 2;
         var estimatedSize = SVG_UTF8_HEADER.Length +
             SVG_UTF8_HEADER2.Length +
             SVG_UTF8_SVG.Length + sStringSize +
@@ -328,21 +330,21 @@ public partial class QrCode
         }
     }
 
-    private void DrawFunctionPatterns(bool[,] isFunction)
+    private void DrawFunctionPatterns(bool[,] modulesReverse, bool[,] isFunction)
     {
         var modules = _modules;
         var size = _size;
 
         for (var i = 0; i < size; i++)
         {
-            SetFunctionModule(6, i, i.IsEven(), modules, isFunction);
-            SetFunctionModule(i, 6, i.IsEven(), modules, isFunction);
+            SetFunctionModule(6, i, i.IsEven(), modules, modulesReverse, isFunction);
+            SetFunctionModule(i, 6, i.IsEven(), modules, modulesReverse, isFunction);
         }
 
         // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
-        DrawFinderPattern(3, 3, isFunction);
-        DrawFinderPattern(size - 4, 3, isFunction);
-        DrawFinderPattern(3, size - 4, isFunction);
+        DrawFinderPattern(3, 3, modulesReverse, isFunction);
+        DrawFinderPattern(size - 4, 3, modulesReverse, isFunction);
+        DrawFinderPattern(3, size - 4, modulesReverse, isFunction);
 
         // Draw numerous alignment patterns
         Span<int> alignPatPos = stackalloc int[MAX_ALIGN_PATTERN_POSITION];
@@ -355,16 +357,16 @@ public partial class QrCode
             {
                 // Don't draw on the three finder corners
                 if (!(i == 0 && j == 0 || i == 0 && j == numAlign - 1 || i == numAlign - 1 && j == 0))
-                    DrawAlignmentPattern(alignPatPos[i], alignPatPos[j], isFunction);
+                    DrawAlignmentPattern(alignPatPos[i], alignPatPos[j], modulesReverse, isFunction);
             }
         }
 
         // Draw configuration data
-        DrawFormatBits(0, isFunction);  // Dummy mask value; overwritten later in the constructor
-        DrawVersion(isFunction);
+        DrawFormatBits(0, modulesReverse, isFunction);  // Dummy mask value; overwritten later in the constructor
+        DrawVersion(modulesReverse, isFunction);
     }
 
-    private void DrawCodewords(ReadOnlySpan<byte> data, bool[,] isFunction)
+    private void DrawCodewords(ReadOnlySpan<byte> data, bool[,] modulesReverse, bool[,] isFunction)
     {
         if (data.Length != GetNumRawDataModules(_version) / 8)
             throw new ArgumentException();
@@ -388,7 +390,9 @@ public partial class QrCode
                     var y = upward ? size - 1 - vert : vert;
                     if (!isFunction[y, x] && i < data.Length * 8)
                     {
-                        modules[y, x] = GetBit(data[i >> 3], 7 - (i & 7));
+                        var bit = GetBit(data[i >> 3], 7 - (i & 7));
+                        modules[y, x] = bit;
+                        modulesReverse[x, y] = bit;
                         i++;
                     }
                 }
@@ -396,38 +400,39 @@ public partial class QrCode
         }
     }
 
-    private int HandleConstructorMasking(int msk, bool[,] isFunction)
+    private int HandleConstructorMasking(int msk, bool[,] modulesReverse, bool[,] isFunction)
     {
         if (msk == -1)
         {
             int minPenalty = int.MaxValue;
             for (int i = 0; i < 8; i++)
             {
-                ApplyMask(i, isFunction);
-                DrawFormatBits(i, isFunction);
-                int penalty = GetPenaltyScore();
+                ApplyMask(i, modulesReverse, isFunction);
+                DrawFormatBits(i, modulesReverse, isFunction);
+                int penalty = GetPenaltyScore(modulesReverse);
                 if (penalty < minPenalty)
                 {
                     msk = i;
                     minPenalty = penalty;
                 }
-                ApplyMask(i, isFunction);
+                ApplyMask(i, modulesReverse, isFunction);
             }
         }
 
-        ApplyMask(msk, isFunction);
-        DrawFormatBits(msk, isFunction);
+        ApplyMask(msk, modulesReverse, isFunction);
+        DrawFormatBits(msk, modulesReverse, isFunction);
         return msk;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SetFunctionModule(int x, int y, bool isBlack, bool[,] modules, bool[,] isFunction)
+    private static void SetFunctionModule(int x, int y, bool isBlack, bool[,] modules, bool[,] modulesReverse, bool[,] isFunction)
     {
         modules[y, x] = isBlack;
+        modulesReverse[x, y] = isBlack;
         isFunction[y, x] = true;
     }
 
-    private void DrawFinderPattern(int x, int y, bool[,] isFunction)
+    private void DrawFinderPattern(int x, int y, bool[,] modulesReverse, bool[,] isFunction)
     {
         var modules = _modules;
         var size = _size;
@@ -439,7 +444,7 @@ public partial class QrCode
                 var dist = Math.Max(Math.Abs(dx), Math.Abs(dy));
                 int xx = x + dx, yy = y + dy;
                 if (0 <= xx && xx < size && 0 <= yy && yy < size)
-                    SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules, isFunction);
+                    SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules, modulesReverse, isFunction);
             }
         }
     }
@@ -474,15 +479,15 @@ public partial class QrCode
         return version / 7 + 2;
     }
 
-    private void DrawAlignmentPattern(int x, int y, bool[,] isFunction)
+    private void DrawAlignmentPattern(int x, int y, bool[,] modulesReverse, bool[,] isFunction)
     {
         var modules = _modules;
         for (var dy = -2; dy <= 2; dy++)
             for (var dx = -2; dx <= 2; dx++)
-                SetFunctionModule(x + dx, y + dy, Math.Max(Math.Abs(dx), Math.Abs(dy)) != 1, modules, isFunction);
+                SetFunctionModule(x + dx, y + dy, Math.Max(Math.Abs(dx), Math.Abs(dy)) != 1, modules, modulesReverse, isFunction);
     }
 
-    private void DrawFormatBits(int msk, bool[,] isFunction)
+    private void DrawFormatBits(int msk, bool[,] modulesReverse, bool[,] isFunction)
     {
         var modules = _modules;
 
@@ -493,22 +498,22 @@ public partial class QrCode
         var bits = (data << 10 | rem) ^ 0x5412;
 
         for (var i = 0; i <= 5; i++)
-            SetFunctionModule(8, i, GetBit(bits, i), modules, isFunction);
-        SetFunctionModule(8, 7, GetBit(bits, 6), modules, isFunction);
-        SetFunctionModule(8, 8, GetBit(bits, 7), modules, isFunction);
-        SetFunctionModule(7, 8, GetBit(bits, 8), modules, isFunction);
+            SetFunctionModule(8, i, GetBit(bits, i), modules, modulesReverse, isFunction);
+        SetFunctionModule(8, 7, GetBit(bits, 6), modules, modulesReverse, isFunction);
+        SetFunctionModule(8, 8, GetBit(bits, 7), modules, modulesReverse, isFunction);
+        SetFunctionModule(7, 8, GetBit(bits, 8), modules, modulesReverse, isFunction);
         for (var i = 9; i < 15; i++)
-            SetFunctionModule(14 - i, 8, GetBit(bits, i), modules, isFunction);
+            SetFunctionModule(14 - i, 8, GetBit(bits, i), modules, modulesReverse, isFunction);
 
         var size = _size;
         for (var i = 0; i < 8; i++)
-            SetFunctionModule(size - 1 - i, 8, GetBit(bits, i), modules, isFunction);
+            SetFunctionModule(size - 1 - i, 8, GetBit(bits, i), modules, modulesReverse, isFunction);
         for (var i = 8; i < 15; i++)
-            SetFunctionModule(8, size - 15 + i, GetBit(bits, i), modules, isFunction);
-        SetFunctionModule(8, size - 8, true, modules, isFunction);
+            SetFunctionModule(8, size - 15 + i, GetBit(bits, i), modules, modulesReverse, isFunction);
+        SetFunctionModule(8, size - 8, true, modules, modulesReverse, isFunction);
     }
 
-    private void DrawVersion(bool[,] isFunction)
+    private void DrawVersion(bool[,] modulesReverse, bool[,] isFunction)
     {
         var version = _version;
         if (version < 7)
@@ -528,12 +533,12 @@ public partial class QrCode
             var bit = GetBit(bits, i);
             var a = size - 11 + i % 3;
             var b = i / 3;
-            SetFunctionModule(a, b, bit, modules, isFunction);
-            SetFunctionModule(b, a, bit, modules, isFunction);
+            SetFunctionModule(a, b, bit, modules, modulesReverse, isFunction);
+            SetFunctionModule(b, a, bit, modules, modulesReverse, isFunction);
         }
     }
 
-    private void ApplyMask(int msk, bool[,] isFunction)
+    private void ApplyMask(int msk, bool[,] modulesReverse, bool[,] isFunction)
     {
         if (msk < 0 || msk > 7)
             throw new ArgumentException("Mask value out of range");
@@ -545,69 +550,74 @@ public partial class QrCode
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x + y).IsEven();
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && (x + y).IsEven();
         }
         else if (msk == 1)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && y.IsEven();
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && y.IsEven();
         }
         else if (msk == 2)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && x % 3 == 0;
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && x % 3 == 0;
         }
         else if (msk == 3)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x + y) % 3 == 0;
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && (x + y) % 3 == 0;
         }
         else if (msk == 4)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x / 3 + y / 2).IsEven();
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && (x / 3 + y / 2).IsEven();
         }
         else if (msk == 5)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && ((x * y) & 1) + x * y % 3 == 0;
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && ((x * y) & 1) + x * y % 3 == 0;
         }
         else if (msk == 6)
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && ((x * y & 1) + x * y % 3).IsEven();
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && ((x * y & 1) + x * y % 3).IsEven();
         }
         else
         {
             for (var y = 0; y < size; y++)
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (((x + y) & 1) + x * y % 3).IsEven();
+                    modulesReverse[x, y] = modules[y, x] ^= !isFunction[y, x] && (((x + y) & 1) + x * y % 3).IsEven();
         }
     }
 
-    private int GetPenaltyScore()
+    private int GetPenaltyScore(bool[,] modulesReverse)
     {
         var result = 0;
-        Span<int> runHistory = stackalloc int[7];
+
+        //Only first 7 positions are used, allocated only for aligment purposes
+        Span<int> runHistoryX = stackalloc int[16];
+        Span<int> runHistoryY = stackalloc int[16];
 
         var size = _size;
         var modules = _modules;
 
         for (int y = 0; y < size; y++)
         {
-            var runColor = false;
-            var runX = 0;
-            runHistory.Clear();
+            bool runColorX = false, runColorY = false;
+            int runX = 0, runY = 0;
+            runHistoryX.Clear();
+            runHistoryY.Clear();
 
             for (int x = 0; x < size; x++)
             {
-                if (modules[y, x] == runColor)
+                bool curModX = modulesReverse[y, x], curModY = modules[x, y];
+                if (curModX == runColorX)
                 {
                     runX++;
                     if (runX == 5)
@@ -617,25 +627,14 @@ public partial class QrCode
                 }
                 else
                 {
-                    FinderPenaltyAddHistory(runX, runHistory);
-                    if (!runColor)
-                        result += FinderPenaltyCountPatterns(runHistory) * PENALTY_N3;
-                    runColor = modules[y, x];
+                    FinderPenaltyAddHistory(runX, runHistoryX);
+                    if (!runColorX)
+                        result += FinderPenaltyCountPatterns(runHistoryX) * PENALTY_N3;
+                    runColorX = curModX;
                     runX = 1;
                 }
-            }
-            result += FinderPenaltyTerminateAndCount(runColor, runX, runHistory) * PENALTY_N3;
-        }
 
-        for (var x = 0; x < size; x++)
-        {
-            var runColor = false;
-            var runY = 0;
-            runHistory.Clear();
-
-            for (int y = 0; y < size; y++)
-            {
-                if (modules[y, x] == runColor)
+                if (curModY == runColorY)
                 {
                     runY++;
                     if (runY == 5)
@@ -645,26 +644,23 @@ public partial class QrCode
                 }
                 else
                 {
-                    FinderPenaltyAddHistory(runY, runHistory);
-                    if (!runColor)
-                        result += FinderPenaltyCountPatterns(runHistory) * PENALTY_N3;
-                    runColor = modules[y, x];
+                    FinderPenaltyAddHistory(runY, runHistoryY);
+                    if (!runColorY)
+                        result += FinderPenaltyCountPatterns(runHistoryY) * PENALTY_N3;
+                    runColorY = curModY;
                     runY = 1;
                 }
-            }
-            result += FinderPenaltyTerminateAndCount(runColor, runY, runHistory) * PENALTY_N3;
-        }
 
-        for (var y = 0; y < size - 1; y++)
-        {
-            for (var x = 0; x < size - 1; x++)
-            {
-                var color = modules[y, x];
-                if (color == modules[y, x + 1] &&
-                    color == modules[y + 1, x] &&
-                    color == modules[y + 1, x + 1])
-                    result += PENALTY_N2;
+                if (x < size - 1 && y < size - 1)
+                {
+                    if (curModX == modules[y, x + 1] &&
+                        curModX == modules[y + 1, x] &&
+                        curModX == modules[y + 1, x + 1])
+                        result += PENALTY_N2;
+                }
             }
+            result += FinderPenaltyTerminateAndCount(runColorX, runX, runHistoryX) * PENALTY_N3;
+            result += FinderPenaltyTerminateAndCount(runColorY, runY, runHistoryY) * PENALTY_N3;
         }
 
         var span = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, bool>(ref MemoryMarshal.GetArrayDataReference(modules)), modules.Length);
@@ -680,13 +676,24 @@ public partial class QrCode
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void FinderPenaltyAddHistory(int currentRunLength, Span<int> runHistory)
     {
-        if (runHistory[0] == 0)
+        ref var ptr = ref MemoryMarshal.GetReference(runHistory);
+
+        if (ptr == 0)
             currentRunLength += _size;
 
-        var aux = runHistory.Slice(0, runHistory.Length - 1);
-        var aux2 = runHistory.Slice(1);
-        aux.CopyTo(aux2);
-        runHistory[0] = currentRunLength;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            var vec = Vector256.LoadUnsafe(ref ptr);
+            vec.StoreUnsafe(ref Unsafe.Add(ref ptr, 1));
+        }
+        else
+        {
+            var aux = runHistory.Slice(0, runHistory.Length - 1);
+            var aux2 = runHistory.Slice(1);
+            aux.CopyTo(aux2);
+        }
+
+        ptr = currentRunLength;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
