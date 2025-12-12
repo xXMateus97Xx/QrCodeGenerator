@@ -47,6 +47,23 @@ public partial class QrCode
 
     const int MAX_ALIGN_PATTERN_POSITION = MAX_VERSION / 7 + 2;
 
+    [Flags]
+    enum ModuleState : byte
+    {
+        None = 0,
+        Module = 1,
+        Reversed = 1 << 2,
+        IsFunction = 1 << 3,
+    }
+
+    ref struct PenaltyState
+    {
+        public Span<int> RunHistory;
+        public int RunCordinate;
+        public bool RunColor;
+        public bool Current;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static sbyte GetCodewordPerBlock(Ecc ecl, int version)
     {
