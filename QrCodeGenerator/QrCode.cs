@@ -65,7 +65,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (modules[y, x].HasFlag(ModuleState.Module))
+                if (modules[x, y].HasFlag(ModuleState.Reversed))
                 {
                     if (x != 0 || y != 0)
                         sb.Append(' ');
@@ -110,7 +110,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (modules[y, x].HasFlag(ModuleState.Module))
+                if (modules[x, y].HasFlag(ModuleState.Reversed))
                 {
                     if (x != 0 || y != 0)
                         destiny.Write(SVG_UTF8_SPACE);
@@ -199,7 +199,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (modules[y, x].HasFlag(ModuleState.Module))
+                if (modules[x, y].HasFlag(ModuleState.Reversed))
                 {
                     if (x != 0 || y != 0)
                     {
@@ -247,7 +247,7 @@ public partial class QrCode
         return bytes;
     }
 
-    private static bool GetModule(int x, int y, int size, ModuleState[,] modules) => 0 <= x && x < size && 0 <= y && y < size && modules[y, x].HasFlag(ModuleState.Module);
+    private static bool GetModule(int x, int y, int size, ModuleState[,] modules) => 0 <= x && x < size && 0 <= y && y < size && modules[x, y].HasFlag(ModuleState.Reversed);
 
     public Image ToImage(int scale, int border)
     {
@@ -497,9 +497,32 @@ public partial class QrCode
     private void DrawAlignmentPattern(int x, int y)
     {
         var modules = _modules;
-        for (var dy = -2; dy <= 2; dy++)
-            for (var dx = -2; dx <= 2; dx++)
-                SetFunctionModule(x + dx, y + dy, Math.Max(Math.Abs(dx), Math.Abs(dy)) != 1, modules);
+
+        SetFunctionModule(x - 2, y - 2, true, modules);
+        SetFunctionModule(x - 1, y - 2, true, modules);
+        SetFunctionModule(x + 0, y - 2, true, modules);
+        SetFunctionModule(x + 1, y - 2, true, modules);
+        SetFunctionModule(x + 2, y - 2, true, modules);
+        SetFunctionModule(x - 2, y - 1, true, modules);
+        SetFunctionModule(x - 1, y - 1, false, modules);
+        SetFunctionModule(x + 0, y - 1, false, modules);
+        SetFunctionModule(x + 1, y - 1, false, modules);
+        SetFunctionModule(x + 2, y - 1, true, modules);
+        SetFunctionModule(x - 2, y + 0, true, modules);
+        SetFunctionModule(x - 1, y + 0, false, modules);
+        SetFunctionModule(x + 0, y + 0, true, modules);
+        SetFunctionModule(x + 1, y + 0, false, modules);
+        SetFunctionModule(x + 2, y + 0, true, modules);
+        SetFunctionModule(x - 2, y + 1, true, modules);
+        SetFunctionModule(x - 1, y + 1, false, modules);
+        SetFunctionModule(x + 0, y + 1, false, modules);
+        SetFunctionModule(x + 1, y + 1, false, modules);
+        SetFunctionModule(x + 2, y + 1, true, modules);
+        SetFunctionModule(x - 2, y + 2, true, modules);
+        SetFunctionModule(x - 1, y + 2, true, modules);
+        SetFunctionModule(x + 0, y + 2, true, modules);
+        SetFunctionModule(x + 1, y + 2, true, modules);
+        SetFunctionModule(x + 2, y + 2, true, modules);
     }
 
     private void DrawFormatBits(int msk)
@@ -512,19 +535,43 @@ public partial class QrCode
             rem = (rem << 1) ^ ((rem >> 9) * 0x537);
         var bits = (data << 10 | rem) ^ 0x5412;
 
-        for (var i = 0; i <= 5; i++)
-            SetFunctionModule(8, i, GetBit(bits, i), modules);
+        SetFunctionModule(8, 0, GetBit(bits, 0), modules);
+        SetFunctionModule(8, 1, GetBit(bits, 1), modules);
+        SetFunctionModule(8, 2, GetBit(bits, 2), modules);
+        SetFunctionModule(8, 3, GetBit(bits, 3), modules);
+        SetFunctionModule(8, 4, GetBit(bits, 4), modules);
+        SetFunctionModule(8, 5, GetBit(bits, 5), modules);
+
         SetFunctionModule(8, 7, GetBit(bits, 6), modules);
         SetFunctionModule(8, 8, GetBit(bits, 7), modules);
         SetFunctionModule(7, 8, GetBit(bits, 8), modules);
-        for (var i = 9; i < 15; i++)
-            SetFunctionModule(14 - i, 8, GetBit(bits, i), modules);
+
+        SetFunctionModule(5, 8, GetBit(bits, 9), modules);
+        SetFunctionModule(4, 8, GetBit(bits, 10), modules);
+        SetFunctionModule(3, 8, GetBit(bits, 11), modules);
+        SetFunctionModule(2, 8, GetBit(bits, 12), modules);
+        SetFunctionModule(1, 8, GetBit(bits, 13), modules);
+        SetFunctionModule(0, 8, GetBit(bits, 14), modules);
 
         var size = _size;
-        for (var i = 0; i < 8; i++)
-            SetFunctionModule(size - 1 - i, 8, GetBit(bits, i), modules);
-        for (var i = 8; i < 15; i++)
-            SetFunctionModule(8, size - 15 + i, GetBit(bits, i), modules);
+
+        SetFunctionModule(size - 1 - 0, 8, GetBit(bits, 0), modules);
+        SetFunctionModule(size - 1 - 1, 8, GetBit(bits, 1), modules);
+        SetFunctionModule(size - 1 - 2, 8, GetBit(bits, 2), modules);
+        SetFunctionModule(size - 1 - 3, 8, GetBit(bits, 3), modules);
+        SetFunctionModule(size - 1 - 4, 8, GetBit(bits, 4), modules);
+        SetFunctionModule(size - 1 - 5, 8, GetBit(bits, 5), modules);
+        SetFunctionModule(size - 1 - 6, 8, GetBit(bits, 6), modules);
+        SetFunctionModule(size - 1 - 7, 8, GetBit(bits, 7), modules);
+
+        SetFunctionModule(8, size - 15 + 8, GetBit(bits, 8), modules);
+        SetFunctionModule(8, size - 15 + 9, GetBit(bits, 9), modules);
+        SetFunctionModule(8, size - 15 + 10, GetBit(bits, 10), modules);
+        SetFunctionModule(8, size - 15 + 11, GetBit(bits, 11), modules);
+        SetFunctionModule(8, size - 15 + 12, GetBit(bits, 12), modules);
+        SetFunctionModule(8, size - 15 + 13, GetBit(bits, 13), modules);
+        SetFunctionModule(8, size - 15 + 14, GetBit(bits, 14), modules);
+
         SetFunctionModule(8, size - 8, true, modules);
     }
 
@@ -685,7 +732,7 @@ public partial class QrCode
 
             for (int x = 0; x < size; x++)
             {
-                xState.Current = modules[y, x].HasFlag(ModuleState.Reversed);
+                xState.Current = modules[x, y].HasFlag(ModuleState.Reversed);
                 yState.Current = modules[x, y].HasFlag(ModuleState.Module);
 
                 result += PenaltyIteration(ref xState);
@@ -699,7 +746,7 @@ public partial class QrCode
                         result += PENALTY_N2;
                 }
             }
-            result += FinderPenaltyTerminateAndCount(xState.RunColor, yState.RunCordinate, runHistoryX) * PENALTY_N3;
+            result += FinderPenaltyTerminateAndCount(xState.RunColor, xState.RunCordinate, runHistoryX) * PENALTY_N3;
             result += FinderPenaltyTerminateAndCount(yState.RunColor, yState.RunCordinate, runHistoryY) * PENALTY_N3;
         }
 
@@ -714,25 +761,24 @@ public partial class QrCode
 
     private int PenaltyIteration(ref PenaltyState state)
     {
-        var result = 0;
-
         if (state.Current == state.RunColor)
         {
             state.RunCordinate++;
             if (state.RunCordinate == 5)
-                result += PENALTY_N1;
+                return PENALTY_N1;
             else if (state.RunCordinate > 5)
-                result++;
-        }
-        else
-        {
-            FinderPenaltyAddHistory(state.RunCordinate, state.RunHistory);
-            if (!state.RunColor)
-                result = FinderPenaltyCountPatterns(state.RunHistory) * PENALTY_N3;
-            state.RunColor = state.Current;
-            state.RunCordinate = 1;
+                return 1;
+
+            return 0;
         }
 
+        var result = 0;
+
+        FinderPenaltyAddHistory(state.RunCordinate, state.RunHistory);
+        if (!state.RunColor)
+            result = FinderPenaltyCountPatterns(state.RunHistory) * PENALTY_N3;
+        state.RunColor = state.Current;
+        state.RunCordinate = 1;
         return result;
     }
 
@@ -791,7 +837,7 @@ public partial class QrCode
         if (Vector256.IsHardwareAccelerated)
         {
             var vec = Vector256.LoadUnsafe(ref ptr);
-            vec.StoreUnsafe(ref Unsafe.Add(ref ptr, 1));
+            vec.StoreUnsafe(ref ptr, 1);
         }
         else
         {
@@ -808,13 +854,26 @@ public partial class QrCode
     {
         ref var hstPtr = ref MemoryMarshal.GetReference(runHistory);
         var n = Unsafe.Add(ref hstPtr, 1);
-        var n6 = Unsafe.Add(ref hstPtr, 6);
 
-        var core = n > 0 &&
-            Unsafe.Add(ref hstPtr, 2) == n &&
-            Unsafe.Add(ref hstPtr, 3) == n * 3 &&
-            Unsafe.Add(ref hstPtr, 4) == n &&
-            Unsafe.Add(ref hstPtr, 5) == n;
+        bool core = n > 0;
+        if (core)
+        {
+            if (Vector128.IsHardwareAccelerated)
+            {
+                var hstVec = Vector128.LoadUnsafe(ref hstPtr, 2);
+                var nVec = Vector128.Create(n) * Vector128.Create(1, 3, 1, 1);
+                core = hstVec == nVec;
+            }
+            else
+            {
+                core = Unsafe.Add(ref hstPtr, 2) == n &&
+                Unsafe.Add(ref hstPtr, 3) == n * 3 &&
+                Unsafe.Add(ref hstPtr, 4) == n &&
+                Unsafe.Add(ref hstPtr, 5) == n;
+            }
+        }
+
+        var n6 = Unsafe.Add(ref hstPtr, 6);
         return (core && hstPtr >= n * 4 && n6 >= n ? 1 : 0)
             + (core && n6 >= n * 4 && hstPtr >= n ? 1 : 0);
     }

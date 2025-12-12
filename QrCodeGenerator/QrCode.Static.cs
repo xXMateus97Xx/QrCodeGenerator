@@ -56,6 +56,7 @@ public partial class QrCode
         IsFunction = 1 << 3,
     }
 
+    [StructLayout(LayoutKind.Auto)]
     ref struct PenaltyState
     {
         public Span<int> RunHistory;
