@@ -452,14 +452,19 @@ public partial class QrCode
         var modules = _modules;
         var size = _size;
 
-        for (var dy = -4; dy <= 4; dy++)
+        var minY = Math.Max(-y, -4);
+        var maxY = Math.Min(Math.Abs(size - y - 1), 4);
+
+        var minX = Math.Max(-x, -4);
+        var maxX = Math.Min(Math.Abs(size - x - 1), 4);
+
+        for (var dy = minY; dy <= maxY; dy++)
         {
-            for (var dx = -4; dx <= 4; dx++)
+            for (var dx = minX; dx <= maxX; dx++)
             {
                 var dist = Math.Max(Math.Abs(dx), Math.Abs(dy));
                 int xx = x + dx, yy = y + dy;
-                if (0 <= xx && xx < size && 0 <= yy && yy < size)
-                    SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules);
+                SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules);
             }
         }
     }
