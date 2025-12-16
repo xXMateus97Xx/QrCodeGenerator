@@ -1,4 +1,5 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Buffers;
@@ -265,11 +266,13 @@ public partial class QrCode
         var black = new Rgba32(0, 0, 0);
         for (var y = 0; y < result.Height; y++)
         {
+            var row = result.DangerousGetPixelRowMemory(y);
+            ref var ptr = ref MemoryMarshal.GetReference(row.Span);
             for (var x = 0; x < result.Width; x++)
             {
                 var color = GetModule(x / scale - border, y / scale - border, thisSize, modules);
                 if (color)
-                    result[x, y] = black;
+                    Unsafe.Add(ref ptr, x) = black;
             }
         }
         return result;
@@ -336,8 +339,9 @@ public partial class QrCode
 
         for (var i = 0; i < size; i++)
         {
-            SetFunctionModule(6, i, i.IsEven(), modules);
-            SetFunctionModule(i, 6, i.IsEven(), modules);
+            var even = i.IsEven();
+            SetFunctionModule(6, i, even, modules);
+            SetFunctionModule(i, 6, even, modules);
         }
 
         // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
@@ -453,16 +457,16 @@ public partial class QrCode
         var size = _size;
 
         var minY = Math.Max(-y, -4);
-        var maxY = Math.Min(Math.Abs(size - y - 1), 4);
+        var maxY = Math.Min((size - y - 1).SimpleAbs(), 4);
 
         var minX = Math.Max(-x, -4);
-        var maxX = Math.Min(Math.Abs(size - x - 1), 4);
+        var maxX = Math.Min((size - x - 1).SimpleAbs(), 4);
 
         for (var dy = minY; dy <= maxY; dy++)
         {
             for (var dx = minX; dx <= maxX; dx++)
             {
-                var dist = Math.Max(Math.Abs(dx), Math.Abs(dy));
+                var dist = Math.Max(dx.SimpleAbs(), dy.SimpleAbs());
                 int xx = x + dx, yy = y + dy;
                 SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules);
             }
@@ -628,9 +632,10 @@ public partial class QrCode
         {
             for (var y = 0; y < size; y++)
             {
+                var isEven = y.IsEven();
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && y.IsEven();
+                    var apply = isEven && !modules[y, x].HasFlag(ModuleState.IsFunction);
                     SetMask(x, y, apply, modules);
                 }
             }
@@ -737,8 +742,9 @@ public partial class QrCode
 
             for (int x = 0; x < size; x++)
             {
-                xState.Current = modules[x, y].HasFlag(ModuleState.Reversed);
-                yState.Current = modules[x, y].HasFlag(ModuleState.Module);
+                var mod = modules[x, y];
+                xState.Current = mod.HasFlag(ModuleState.Reversed);
+                yState.Current = mod.HasFlag(ModuleState.Module);
 
                 result += PenaltyIteration(ref xState);
                 result += PenaltyIteration(ref yState);
@@ -758,7 +764,7 @@ public partial class QrCode
         var black = CountModules();
 
         var total = size * size;
-        var k = (Math.Abs(black * 20 - total * 10) + total - 1) / total - 1;
+        var k = ((black * 20 - total * 10).SimpleAbs() + total - 1) / total - 1;
         result += k * PENALTY_N4;
 
         return result;
@@ -879,8 +885,8 @@ public partial class QrCode
         }
 
         var n6 = Unsafe.Add(ref hstPtr, 6);
-        return (core && hstPtr >= n * 4 && n6 >= n ? 1 : 0)
-            + (core && n6 >= n * 4 && hstPtr >= n ? 1 : 0);
+        return (core && n6 >= n && hstPtr >= n * 4 ? 1 : 0)
+            + (core && hstPtr >= n && n6 >= n * 4 ? 1 : 0);
     }
 
     private int FinderPenaltyTerminateAndCount(bool currentRunColor, int currentRunLength, Span<int> runHistory)
