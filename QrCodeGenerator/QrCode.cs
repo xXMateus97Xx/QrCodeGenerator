@@ -336,12 +336,13 @@ public partial class QrCode
     {
         var modules = _modules;
         var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         for (var i = 0; i < size; i++)
         {
             var even = i.IsEven();
-            SetFunctionModule(6, i, even, modules);
-            SetFunctionModule(i, 6, even, modules);
+            SetFunctionModule(6, i, even, ref ptr, size);
+            SetFunctionModule(i, 6, even, ref ptr, size);
         }
 
         // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
@@ -435,26 +436,27 @@ public partial class QrCode
         return msk;
     }
 
-    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SetFunctionModule(int x, int y, bool isBlack, ModuleState[,] modules)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SetFunctionModule(int x, int y, bool isBlack, ref ModuleState ptr, int size)
     {
         if (isBlack)
         {
-            modules[x, y] |= ModuleState.Reversed;
-            modules[y, x] |= ModuleState.Module;
+            Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
+            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
         }
         else
         {
-            modules[x, y] &= ~ModuleState.Reversed;
-            modules[y, x] &= ~ModuleState.Module;
+            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
+            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
         }
-        modules[y, x] |= ModuleState.IsFunction;
+        Unsafe.Add(ref ptr, y * size + x) |= ModuleState.IsFunction;
     }
 
     private void DrawFinderPattern(int x, int y)
     {
         var modules = _modules;
         var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         var minY = Math.Max(-y, -4);
         var maxY = Math.Min((size - y - 1).SimpleAbs(), 4);
@@ -468,7 +470,7 @@ public partial class QrCode
             {
                 var dist = Math.Max(dx.SimpleAbs(), dy.SimpleAbs());
                 int xx = x + dx, yy = y + dy;
-                SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules);
+                SetFunctionModule(xx, yy, dist != 2 && dist != 4, ref ptr, size);
             }
         }
     }
@@ -506,82 +508,84 @@ public partial class QrCode
     private void DrawAlignmentPattern(int x, int y)
     {
         var modules = _modules;
+        var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
-        SetFunctionModule(x - 2, y - 2, true, modules);
-        SetFunctionModule(x - 1, y - 2, true, modules);
-        SetFunctionModule(x + 0, y - 2, true, modules);
-        SetFunctionModule(x + 1, y - 2, true, modules);
-        SetFunctionModule(x + 2, y - 2, true, modules);
-        SetFunctionModule(x - 2, y - 1, true, modules);
-        SetFunctionModule(x - 1, y - 1, false, modules);
-        SetFunctionModule(x + 0, y - 1, false, modules);
-        SetFunctionModule(x + 1, y - 1, false, modules);
-        SetFunctionModule(x + 2, y - 1, true, modules);
-        SetFunctionModule(x - 2, y + 0, true, modules);
-        SetFunctionModule(x - 1, y + 0, false, modules);
-        SetFunctionModule(x + 0, y + 0, true, modules);
-        SetFunctionModule(x + 1, y + 0, false, modules);
-        SetFunctionModule(x + 2, y + 0, true, modules);
-        SetFunctionModule(x - 2, y + 1, true, modules);
-        SetFunctionModule(x - 1, y + 1, false, modules);
-        SetFunctionModule(x + 0, y + 1, false, modules);
-        SetFunctionModule(x + 1, y + 1, false, modules);
-        SetFunctionModule(x + 2, y + 1, true, modules);
-        SetFunctionModule(x - 2, y + 2, true, modules);
-        SetFunctionModule(x - 1, y + 2, true, modules);
-        SetFunctionModule(x + 0, y + 2, true, modules);
-        SetFunctionModule(x + 1, y + 2, true, modules);
-        SetFunctionModule(x + 2, y + 2, true, modules);
+        SetFunctionModule(x - 2, y - 2, true, ref ptr, size);
+        SetFunctionModule(x - 1, y - 2, true, ref ptr, size);
+        SetFunctionModule(x + 0, y - 2, true, ref ptr, size);
+        SetFunctionModule(x + 1, y - 2, true, ref ptr, size);
+        SetFunctionModule(x + 2, y - 2, true, ref ptr, size);
+        SetFunctionModule(x - 2, y - 1, true, ref ptr, size);
+        SetFunctionModule(x - 1, y - 1, false, ref ptr, size);
+        SetFunctionModule(x + 0, y - 1, false, ref ptr, size);
+        SetFunctionModule(x + 1, y - 1, false, ref ptr, size);
+        SetFunctionModule(x + 2, y - 1, true, ref ptr, size);
+        SetFunctionModule(x - 2, y + 0, true, ref ptr, size);
+        SetFunctionModule(x - 1, y + 0, false, ref ptr, size);
+        SetFunctionModule(x + 0, y + 0, true, ref ptr, size);
+        SetFunctionModule(x + 1, y + 0, false, ref ptr, size);
+        SetFunctionModule(x + 2, y + 0, true, ref ptr, size);
+        SetFunctionModule(x - 2, y + 1, true, ref ptr, size);
+        SetFunctionModule(x - 1, y + 1, false, ref ptr, size);
+        SetFunctionModule(x + 0, y + 1, false, ref ptr, size);
+        SetFunctionModule(x + 1, y + 1, false, ref ptr, size);
+        SetFunctionModule(x + 2, y + 1, true, ref ptr, size);
+        SetFunctionModule(x - 2, y + 2, true, ref ptr, size);
+        SetFunctionModule(x - 1, y + 2, true, ref ptr, size);
+        SetFunctionModule(x + 0, y + 2, true, ref ptr, size);
+        SetFunctionModule(x + 1, y + 2, true, ref ptr, size);
+        SetFunctionModule(x + 2, y + 2, true, ref ptr, size);
     }
 
     private void DrawFormatBits(int msk)
     {
-        var modules = _modules;
-
         var data = (int)_errorCorrectionLevel << 3 | msk;
         var rem = data;
         for (var i = 0; i < 10; i++)
             rem = (rem << 1) ^ ((rem >> 9) * 0x537);
         var bits = (data << 10 | rem) ^ 0x5412;
 
-        SetFunctionModule(8, 0, GetBit(bits, 0), modules);
-        SetFunctionModule(8, 1, GetBit(bits, 1), modules);
-        SetFunctionModule(8, 2, GetBit(bits, 2), modules);
-        SetFunctionModule(8, 3, GetBit(bits, 3), modules);
-        SetFunctionModule(8, 4, GetBit(bits, 4), modules);
-        SetFunctionModule(8, 5, GetBit(bits, 5), modules);
-
-        SetFunctionModule(8, 7, GetBit(bits, 6), modules);
-        SetFunctionModule(8, 8, GetBit(bits, 7), modules);
-        SetFunctionModule(7, 8, GetBit(bits, 8), modules);
-
-        SetFunctionModule(5, 8, GetBit(bits, 9), modules);
-        SetFunctionModule(4, 8, GetBit(bits, 10), modules);
-        SetFunctionModule(3, 8, GetBit(bits, 11), modules);
-        SetFunctionModule(2, 8, GetBit(bits, 12), modules);
-        SetFunctionModule(1, 8, GetBit(bits, 13), modules);
-        SetFunctionModule(0, 8, GetBit(bits, 14), modules);
-
+        var modules = _modules;
         var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
-        SetFunctionModule(size - 1 - 0, 8, GetBit(bits, 0), modules);
-        SetFunctionModule(size - 1 - 1, 8, GetBit(bits, 1), modules);
-        SetFunctionModule(size - 1 - 2, 8, GetBit(bits, 2), modules);
-        SetFunctionModule(size - 1 - 3, 8, GetBit(bits, 3), modules);
-        SetFunctionModule(size - 1 - 4, 8, GetBit(bits, 4), modules);
-        SetFunctionModule(size - 1 - 5, 8, GetBit(bits, 5), modules);
-        SetFunctionModule(size - 1 - 6, 8, GetBit(bits, 6), modules);
-        SetFunctionModule(size - 1 - 7, 8, GetBit(bits, 7), modules);
+        SetFunctionModule(8, 0, GetBit(bits, 0), ref ptr, size);
+        SetFunctionModule(8, 1, GetBit(bits, 1), ref ptr, size);
+        SetFunctionModule(8, 2, GetBit(bits, 2), ref ptr, size);
+        SetFunctionModule(8, 3, GetBit(bits, 3), ref ptr, size);
+        SetFunctionModule(8, 4, GetBit(bits, 4), ref ptr, size);
+        SetFunctionModule(8, 5, GetBit(bits, 5), ref ptr, size);
 
-        SetFunctionModule(8, size - 15 + 8, GetBit(bits, 8), modules);
-        SetFunctionModule(8, size - 15 + 9, GetBit(bits, 9), modules);
-        SetFunctionModule(8, size - 15 + 10, GetBit(bits, 10), modules);
-        SetFunctionModule(8, size - 15 + 11, GetBit(bits, 11), modules);
-        SetFunctionModule(8, size - 15 + 12, GetBit(bits, 12), modules);
-        SetFunctionModule(8, size - 15 + 13, GetBit(bits, 13), modules);
-        SetFunctionModule(8, size - 15 + 14, GetBit(bits, 14), modules);
+        SetFunctionModule(8, 7, GetBit(bits, 6), ref ptr, size);
+        SetFunctionModule(8, 8, GetBit(bits, 7), ref ptr, size);
+        SetFunctionModule(7, 8, GetBit(bits, 8), ref ptr, size);
 
-        SetFunctionModule(8, size - 8, true, modules);
+        SetFunctionModule(5, 8, GetBit(bits, 9), ref ptr, size);
+        SetFunctionModule(4, 8, GetBit(bits, 10), ref ptr, size);
+        SetFunctionModule(3, 8, GetBit(bits, 11), ref ptr, size);
+        SetFunctionModule(2, 8, GetBit(bits, 12), ref ptr, size);
+        SetFunctionModule(1, 8, GetBit(bits, 13), ref ptr, size);
+        SetFunctionModule(0, 8, GetBit(bits, 14), ref ptr, size);
+
+        SetFunctionModule(size - 1 - 0, 8, GetBit(bits, 0), ref ptr, size);
+        SetFunctionModule(size - 1 - 1, 8, GetBit(bits, 1), ref ptr, size);
+        SetFunctionModule(size - 1 - 2, 8, GetBit(bits, 2), ref ptr, size);
+        SetFunctionModule(size - 1 - 3, 8, GetBit(bits, 3), ref ptr, size);
+        SetFunctionModule(size - 1 - 4, 8, GetBit(bits, 4), ref ptr, size);
+        SetFunctionModule(size - 1 - 5, 8, GetBit(bits, 5), ref ptr, size);
+        SetFunctionModule(size - 1 - 6, 8, GetBit(bits, 6), ref ptr, size);
+        SetFunctionModule(size - 1 - 7, 8, GetBit(bits, 7), ref ptr, size);
+
+        SetFunctionModule(8, size - 15 + 8, GetBit(bits, 8), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 9, GetBit(bits, 9), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 10, GetBit(bits, 10), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 11, GetBit(bits, 11), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 12, GetBit(bits, 12), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 13, GetBit(bits, 13), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 14, GetBit(bits, 14), ref ptr, size);
+
+        SetFunctionModule(8, size - 8, true, ref ptr, size);
     }
 
     private void DrawVersion()
@@ -596,6 +600,7 @@ public partial class QrCode
         var bits = version << 12 | rem;
 
         var modules = _modules;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         var size = _size;
         // Draw two copies
@@ -604,8 +609,8 @@ public partial class QrCode
             var bit = GetBit(bits, i);
             var a = size - 11 + i % 3;
             var b = i / 3;
-            SetFunctionModule(a, b, bit, modules);
-            SetFunctionModule(b, a, bit, modules);
+            SetFunctionModule(a, b, bit, ref ptr, size);
+            SetFunctionModule(b, a, bit, ref ptr, size);
         }
     }
 
@@ -624,7 +629,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (x + y).IsEven();
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (x + y).IsEven();
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -636,7 +641,7 @@ public partial class QrCode
                 var isEven = y.IsEven();
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = isEven && !modules[y, x].HasFlag(ModuleState.IsFunction);
+                    var apply = isEven && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -647,7 +652,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && x % 3 == 0;
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && x % 3 == 0;
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -658,7 +663,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (x + y) % 3 == 0;
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (x + y) % 3 == 0;
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -669,7 +674,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (x / 3 + y / 2).IsEven();
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (x / 3 + y / 2).IsEven();
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -680,7 +685,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && ((x * y) & 1) + x * y % 3 == 0;
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && ((x * y) & 1) + x * y % 3 == 0;
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -691,7 +696,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && ((x * y & 1) + x * y % 3).IsEven();
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && ((x * y & 1) + x * y % 3).IsEven();
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -702,7 +707,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (((x + y) & 1) + x * y % 3).IsEven();
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (((x + y) & 1) + x * y % 3).IsEven();
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
