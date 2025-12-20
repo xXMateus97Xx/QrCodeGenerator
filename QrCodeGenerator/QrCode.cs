@@ -492,8 +492,9 @@ public partial class QrCode
 
         result[0] = 6;
         var size = _size;
+        ref var ptr = ref MemoryMarshal.GetReference(result);
         for (int i = result.Length - 1, pos = size - 7; i >= 1; i--, pos -= step)
-            result[i] = pos;
+            Unsafe.Add(ref ptr, i) = pos;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
