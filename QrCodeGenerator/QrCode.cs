@@ -616,6 +616,7 @@ public partial class QrCode
 
         var size = _size;
         var modules = _modules;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         if (msk == 0)
         {
@@ -624,7 +625,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (x + y).IsEven();
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -636,7 +637,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = isEven && !modules[y, x].HasFlag(ModuleState.IsFunction);
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -647,7 +648,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && x % 3 == 0;
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -658,7 +659,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (x + y) % 3 == 0;
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -669,7 +670,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (x / 3 + y / 2).IsEven();
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -680,7 +681,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && ((x * y) & 1) + x * y % 3 == 0;
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -691,7 +692,7 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && ((x * y & 1) + x * y % 3).IsEven();
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
@@ -702,23 +703,23 @@ public partial class QrCode
                 for (var x = 0; x < size; x++)
                 {
                     var apply = !modules[y, x].HasFlag(ModuleState.IsFunction) && (((x + y) & 1) + x * y % 3).IsEven();
-                    SetMask(x, y, apply, modules);
+                    SetMask(x, y, apply, ref ptr, size);
                 }
             }
         }
     }
 
-    private static void SetMask(int x, int y, bool apply, ModuleState[,] modules)
+    private static void SetMask(int x, int y, bool apply, ref ModuleState ptr, int size)
     {
-        if (apply ^ modules[y, x].HasFlag(ModuleState.Module))
+        if (apply ^ Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.Module))
         {
-            modules[y, x] |= ModuleState.Module;
-            modules[x, y] |= ModuleState.Reversed;
+            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
+            Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
         }
         else
         {
-            modules[y, x] &= ~ModuleState.Module;
-            modules[x, y] &= ~ModuleState.Reversed;
+            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
+            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
         }
     }
 
