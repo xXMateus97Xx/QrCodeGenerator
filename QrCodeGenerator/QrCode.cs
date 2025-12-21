@@ -379,7 +379,8 @@ public partial class QrCode
 
         var modules = _modules;
         var size = _size;
-        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+        ref var modulePtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+        ref var dataPtr = ref MemoryMarshal.GetReference(data);
 
         for (var right = size - 1; right >= 1; right -= 2)
         {
@@ -393,18 +394,18 @@ public partial class QrCode
                     var x = right - j;
                     var upward = ((right + 1) & 2) == 0;
                     var y = upward ? size - 1 - vert : vert;
-                    if (!Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && i < data.Length * 8)
+                    if (!Unsafe.Add(ref modulePtr, y * size + x).HasFlag(ModuleState.IsFunction) && i < data.Length * 8)
                     {
-                        var bit = GetBit(data[i >> 3], 7 - (i & 7));
+                        var bit = GetBit(Unsafe.Add(ref dataPtr, i >> 3), 7 - (i & 7));
                         if (bit)
                         {
-                            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
-                            Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
+                            Unsafe.Add(ref modulePtr, y * size + x) |= ModuleState.Module;
+                            Unsafe.Add(ref modulePtr, x * size + y) |= ModuleState.Reversed;
                         }
                         else
                         {
-                            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
-                            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
+                            Unsafe.Add(ref modulePtr, y * size + x) &= ~ModuleState.Module;
+                            Unsafe.Add(ref modulePtr, x * size + y) &= ~ModuleState.Reversed;
                         }
                         i++;
                     }
