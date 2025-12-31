@@ -8,8 +8,11 @@ namespace QrCodeGenerator.Mvc;
 
 [HtmlTargetElement("qrcode", Attributes = "data", TagStructure = TagStructure.WithoutEndTag)]
 [HtmlTargetElement("qrcode", Attributes = "data,border", TagStructure = TagStructure.WithoutEndTag)]
+[HtmlTargetElement("qrcode", Attributes = "data,border,ecc", TagStructure = TagStructure.WithoutEndTag)]
 [HtmlTargetElement("qrcode", Attributes = "data,scale", TagStructure = TagStructure.WithoutEndTag)]
+[HtmlTargetElement("qrcode", Attributes = "data,scale,ecc", TagStructure = TagStructure.WithoutEndTag)]
 [HtmlTargetElement("qrcode", Attributes = "data,scale,border", TagStructure = TagStructure.WithoutEndTag)]
+[HtmlTargetElement("qrcode", Attributes = "data,scale,border,ecc", TagStructure = TagStructure.WithoutEndTag)]
 public class QrCodeTagHelper(QrCodeConfiguration configuration) : TagHelper
 {
     private readonly QrCodeConfiguration _configuration = configuration;
@@ -23,6 +26,9 @@ public class QrCodeTagHelper(QrCodeConfiguration configuration) : TagHelper
     [HtmlAttributeName("border")]
     public int Border { get; set; }
 
+    [HtmlAttributeName("ecc")]
+    public Ecc? ErrorCorrectionLevel { get; set; }
+
     public override void Process(TagHelperContext context, TagHelperOutput output)
     {
         var data = Data;
@@ -34,7 +40,7 @@ public class QrCodeTagHelper(QrCodeConfiguration configuration) : TagHelper
 
         var border = Math.Max(Border, 0);
 
-        var qrCode = QrCode.EncodeText(data, _configuration.ErrorCorrectionLevel);
+        var qrCode = QrCode.EncodeText(data, ErrorCorrectionLevel ?? _configuration.ErrorCorrectionLevel);
         if (_configuration.Format == QrCodeFormat.Svg)
         {
             var sb = new StringBuilder();
