@@ -632,7 +632,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (x + y).IsEven();
+                    var apply = (x + y).IsEven() && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -655,7 +655,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && x % 3 == 0;
+                    var apply = x % 3 == 0 && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -666,7 +666,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (x + y) % 3 == 0;
+                    var apply = (x + y) % 3 == 0 && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
@@ -677,7 +677,7 @@ public partial class QrCode
             {
                 for (var x = 0; x < size; x++)
                 {
-                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (x / 3 + y / 2).IsEven();
+                    var apply = (x / 3 + y / 2).IsEven() && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
                     SetMask(x, y, apply, ref ptr, size);
                 }
             }
