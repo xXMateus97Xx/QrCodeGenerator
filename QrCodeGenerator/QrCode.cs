@@ -1,11 +1,14 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Buffers;
 using System.Buffers.Text;
 using System.IO;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
 
 namespace QrCodeGenerator;
@@ -16,24 +19,23 @@ public partial class QrCode
     private readonly int _size;
     private readonly Ecc _errorCorrectionLevel;
     private readonly int _mask;
-    private readonly bool[,] _modules;
+    private readonly ModuleState[,] _modules;
 
     private QrCode(int ver, Ecc ecl, ReadOnlySpan<byte> dataCodewords, int msk)
     {
         _version = ver;
         _size = ver * 4 + 17;
         _errorCorrectionLevel = ecl;
-        _modules = new bool[_size, _size];
-        var isFunction = new bool[_size, _size];
+        _modules = new ModuleState[_size, _size];
 
-        DrawFunctionPatterns(isFunction);
+        DrawFunctionPatterns();
         var rawCodewords = GetNumRawDataModules(ver) / 8;
         byte[] pooledArray = null;
         Span<byte> allCodewords = rawCodewords <= 512 ? stackalloc byte[512] : (pooledArray = ArrayPool<byte>.Shared.Rent(rawCodewords));
         allCodewords = allCodewords.Slice(0, rawCodewords);
         AddEccAndInterleave(dataCodewords, allCodewords);
-        DrawCodewords(allCodewords, isFunction);
-        _mask = HandleConstructorMasking(msk, isFunction);
+        DrawCodewords(allCodewords);
+        _mask = HandleConstructorMasking(msk);
         if (pooledArray != null)
             ArrayPool<byte>.Shared.Return(pooledArray);
     }
@@ -64,7 +66,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (modules[y, x])
+                if (modules[x, y].HasFlag(ModuleState.Reversed))
                 {
                     if (x != 0 || y != 0)
                         sb.Append(' ');
@@ -109,7 +111,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (modules[y, x])
+                if (modules[x, y].HasFlag(ModuleState.Reversed))
                 {
                     if (x != 0 || y != 0)
                         destiny.Write(SVG_UTF8_SPACE);
@@ -140,7 +142,7 @@ public partial class QrCode
 
         var size = _size;
         var s = size + border * 2;
-        var sStringSize = ((int)Math.Floor(Math.Log10(s))) + 1;
+        var sStringSize = (((int)Math.Floor(Math.Log10(s))) + 1) * 2;
         var estimatedSize = SVG_UTF8_HEADER.Length +
             SVG_UTF8_HEADER2.Length +
             SVG_UTF8_SVG.Length + sStringSize +
@@ -198,7 +200,7 @@ public partial class QrCode
         {
             for (var x = 0; x < size; x++)
             {
-                if (modules[y, x])
+                if (modules[x, y].HasFlag(ModuleState.Reversed))
                 {
                     if (x != 0 || y != 0)
                     {
@@ -246,7 +248,7 @@ public partial class QrCode
         return bytes;
     }
 
-    public static bool GetModule(int x, int y, int size, bool[,] modules) => 0 <= x && x < size && 0 <= y && y < size && modules[y, x];
+    private static bool GetModule(int x, int y, int size, ModuleState[,] modules) => 0 <= x && x < size && 0 <= y && y < size && modules[x, y].HasFlag(ModuleState.Reversed);
 
     public Image ToImage(int scale, int border)
     {
@@ -264,11 +266,13 @@ public partial class QrCode
         var black = new Rgba32(0, 0, 0);
         for (var y = 0; y < result.Height; y++)
         {
+            var row = result.DangerousGetPixelRowMemory(y);
+            ref var ptr = ref MemoryMarshal.GetReference(row.Span);
             for (var x = 0; x < result.Width; x++)
             {
                 var color = GetModule(x / scale - border, y / scale - border, thisSize, modules);
                 if (color)
-                    result[x, y] = black;
+                    Unsafe.Add(ref ptr, x) = black;
             }
         }
         return result;
@@ -312,7 +316,8 @@ public partial class QrCode
 
         // Interleave (not concatenate) the bytes from every block into a single sequence
         ref var resultPtr = ref MemoryMarshal.GetReference(result);
-        for (int i = 0, k = 0; i < blocks[0].Length; i++)
+        var firstBlockSize = blocksPtr.Length;
+        for (int i = 0, k = 0; i < firstBlockSize; i++)
         {
             for (int j = 0; j < blocks.Length; j++)
             {
@@ -328,21 +333,23 @@ public partial class QrCode
         }
     }
 
-    private void DrawFunctionPatterns(bool[,] isFunction)
+    private void DrawFunctionPatterns()
     {
         var modules = _modules;
         var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         for (var i = 0; i < size; i++)
         {
-            SetFunctionModule(6, i, i.IsEven(), modules, isFunction);
-            SetFunctionModule(i, 6, i.IsEven(), modules, isFunction);
+            var even = i.IsEven();
+            SetFunctionModule(6, i, even, ref ptr, size);
+            SetFunctionModule(i, 6, even, ref ptr, size);
         }
 
         // Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
-        DrawFinderPattern(3, 3, isFunction);
-        DrawFinderPattern(size - 4, 3, isFunction);
-        DrawFinderPattern(3, size - 4, isFunction);
+        DrawFinderPattern(3, 3);
+        DrawFinderPattern(size - 4, 3);
+        DrawFinderPattern(3, size - 4);
 
         // Draw numerous alignment patterns
         Span<int> alignPatPos = stackalloc int[MAX_ALIGN_PATTERN_POSITION];
@@ -355,16 +362,16 @@ public partial class QrCode
             {
                 // Don't draw on the three finder corners
                 if (!(i == 0 && j == 0 || i == 0 && j == numAlign - 1 || i == numAlign - 1 && j == 0))
-                    DrawAlignmentPattern(alignPatPos[i], alignPatPos[j], isFunction);
+                    DrawAlignmentPattern(alignPatPos[i], alignPatPos[j]);
             }
         }
 
         // Draw configuration data
-        DrawFormatBits(0, isFunction);  // Dummy mask value; overwritten later in the constructor
-        DrawVersion(isFunction);
+        DrawFormatBits(0);  // Dummy mask value; overwritten later in the constructor
+        DrawVersion();
     }
 
-    private void DrawCodewords(ReadOnlySpan<byte> data, bool[,] isFunction)
+    private void DrawCodewords(ReadOnlySpan<byte> data)
     {
         if (data.Length != GetNumRawDataModules(_version) / 8)
             throw new ArgumentException();
@@ -373,6 +380,8 @@ public partial class QrCode
 
         var modules = _modules;
         var size = _size;
+        ref var modulePtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+        ref var dataPtr = ref MemoryMarshal.GetReference(data);
 
         for (var right = size - 1; right >= 1; right -= 2)
         {
@@ -386,9 +395,19 @@ public partial class QrCode
                     var x = right - j;
                     var upward = ((right + 1) & 2) == 0;
                     var y = upward ? size - 1 - vert : vert;
-                    if (!isFunction[y, x] && i < data.Length * 8)
+                    if (!Unsafe.Add(ref modulePtr, y * size + x).HasFlag(ModuleState.IsFunction) && i < data.Length * 8)
                     {
-                        modules[y, x] = GetBit(data[i >> 3], 7 - (i & 7));
+                        var bit = GetBit(Unsafe.Add(ref dataPtr, i >> 3), 7 - (i & 7));
+                        if (bit)
+                        {
+                            Unsafe.Add(ref modulePtr, y * size + x) |= ModuleState.Module;
+                            Unsafe.Add(ref modulePtr, x * size + y) |= ModuleState.Reversed;
+                        }
+                        else
+                        {
+                            Unsafe.Add(ref modulePtr, y * size + x) &= ~ModuleState.Module;
+                            Unsafe.Add(ref modulePtr, x * size + y) &= ~ModuleState.Reversed;
+                        }
                         i++;
                     }
                 }
@@ -396,50 +415,65 @@ public partial class QrCode
         }
     }
 
-    private int HandleConstructorMasking(int msk, bool[,] isFunction)
+    private int HandleConstructorMasking(int msk)
     {
         if (msk == -1)
         {
             int minPenalty = int.MaxValue;
             for (int i = 0; i < 8; i++)
             {
-                ApplyMask(i, isFunction);
-                DrawFormatBits(i, isFunction);
+                ApplyMask(i);
+                DrawFormatBits(i);
                 int penalty = GetPenaltyScore();
                 if (penalty < minPenalty)
                 {
                     msk = i;
                     minPenalty = penalty;
                 }
-                ApplyMask(i, isFunction);
+                ApplyMask(i);
             }
         }
 
-        ApplyMask(msk, isFunction);
-        DrawFormatBits(msk, isFunction);
+        ApplyMask(msk);
+        DrawFormatBits(msk);
         return msk;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SetFunctionModule(int x, int y, bool isBlack, bool[,] modules, bool[,] isFunction)
+    private static void SetFunctionModule(int x, int y, bool isBlack, ref ModuleState ptr, int size)
     {
-        modules[y, x] = isBlack;
-        isFunction[y, x] = true;
+        if (isBlack)
+        {
+            Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
+            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
+        }
+        else
+        {
+            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
+            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
+        }
+        Unsafe.Add(ref ptr, y * size + x) |= ModuleState.IsFunction;
     }
 
-    private void DrawFinderPattern(int x, int y, bool[,] isFunction)
+    private void DrawFinderPattern(int x, int y)
     {
         var modules = _modules;
         var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
-        for (var dy = -4; dy <= 4; dy++)
+        var minY = Math.Max(-y, -4);
+        var maxY = Math.Min((size - y - 1).SimpleAbs(), 4);
+
+        var minX = Math.Max(-x, -4);
+        var maxX = Math.Min((size - x - 1).SimpleAbs(), 4);
+
+        for (var dy = minY; dy <= maxY; dy++)
         {
-            for (var dx = -4; dx <= 4; dx++)
+            for (var dx = minX; dx <= maxX; dx++)
             {
-                var dist = Math.Max(Math.Abs(dx), Math.Abs(dy));
+                var dist = Math.Max(dx.SimpleAbs(), dy.SimpleAbs());
                 int xx = x + dx, yy = y + dy;
-                if (0 <= xx && xx < size && 0 <= yy && yy < size)
-                    SetFunctionModule(xx, yy, dist != 2 && dist != 4, modules, isFunction);
+                SetFunctionModule(xx, yy, dist != 2 && dist != 4, ref ptr, size);
             }
         }
     }
@@ -460,8 +494,9 @@ public partial class QrCode
 
         result[0] = 6;
         var size = _size;
+        ref var ptr = ref MemoryMarshal.GetReference(result);
         for (int i = result.Length - 1, pos = size - 7; i >= 1; i--, pos -= step)
-            result[i] = pos;
+            Unsafe.Add(ref ptr, i) = pos;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -474,52 +509,95 @@ public partial class QrCode
         return version / 7 + 2;
     }
 
-    private void DrawAlignmentPattern(int x, int y, bool[,] isFunction)
+    private void DrawAlignmentPattern(int x, int y)
     {
         var modules = _modules;
-        for (var dy = -2; dy <= 2; dy++)
-            for (var dx = -2; dx <= 2; dx++)
-                SetFunctionModule(x + dx, y + dy, Math.Max(Math.Abs(dx), Math.Abs(dy)) != 1, modules, isFunction);
-    }
-
-    private void DrawFormatBits(int msk, bool[,] isFunction)
-    {
-        var modules = _modules;
-
-        var data = (int)_errorCorrectionLevel << 3 | msk;
-        var rem = data;
-        for (var i = 0; i < 10; i++)
-            rem = (rem << 1) ^ ((rem >> 9) * 0x537);
-        var bits = (data << 10 | rem) ^ 0x5412;
-
-        for (var i = 0; i <= 5; i++)
-            SetFunctionModule(8, i, GetBit(bits, i), modules, isFunction);
-        SetFunctionModule(8, 7, GetBit(bits, 6), modules, isFunction);
-        SetFunctionModule(8, 8, GetBit(bits, 7), modules, isFunction);
-        SetFunctionModule(7, 8, GetBit(bits, 8), modules, isFunction);
-        for (var i = 9; i < 15; i++)
-            SetFunctionModule(14 - i, 8, GetBit(bits, i), modules, isFunction);
-
         var size = _size;
-        for (var i = 0; i < 8; i++)
-            SetFunctionModule(size - 1 - i, 8, GetBit(bits, i), modules, isFunction);
-        for (var i = 8; i < 15; i++)
-            SetFunctionModule(8, size - 15 + i, GetBit(bits, i), modules, isFunction);
-        SetFunctionModule(8, size - 8, true, modules, isFunction);
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+
+        SetFunctionModule(x - 2, y - 2, true, ref ptr, size);
+        SetFunctionModule(x - 1, y - 2, true, ref ptr, size);
+        SetFunctionModule(x + 0, y - 2, true, ref ptr, size);
+        SetFunctionModule(x + 1, y - 2, true, ref ptr, size);
+        SetFunctionModule(x + 2, y - 2, true, ref ptr, size);
+        SetFunctionModule(x - 2, y - 1, true, ref ptr, size);
+        SetFunctionModule(x - 1, y - 1, false, ref ptr, size);
+        SetFunctionModule(x + 0, y - 1, false, ref ptr, size);
+        SetFunctionModule(x + 1, y - 1, false, ref ptr, size);
+        SetFunctionModule(x + 2, y - 1, true, ref ptr, size);
+        SetFunctionModule(x - 2, y + 0, true, ref ptr, size);
+        SetFunctionModule(x - 1, y + 0, false, ref ptr, size);
+        SetFunctionModule(x + 0, y + 0, true, ref ptr, size);
+        SetFunctionModule(x + 1, y + 0, false, ref ptr, size);
+        SetFunctionModule(x + 2, y + 0, true, ref ptr, size);
+        SetFunctionModule(x - 2, y + 1, true, ref ptr, size);
+        SetFunctionModule(x - 1, y + 1, false, ref ptr, size);
+        SetFunctionModule(x + 0, y + 1, false, ref ptr, size);
+        SetFunctionModule(x + 1, y + 1, false, ref ptr, size);
+        SetFunctionModule(x + 2, y + 1, true, ref ptr, size);
+        SetFunctionModule(x - 2, y + 2, true, ref ptr, size);
+        SetFunctionModule(x - 1, y + 2, true, ref ptr, size);
+        SetFunctionModule(x + 0, y + 2, true, ref ptr, size);
+        SetFunctionModule(x + 1, y + 2, true, ref ptr, size);
+        SetFunctionModule(x + 2, y + 2, true, ref ptr, size);
     }
 
-    private void DrawVersion(bool[,] isFunction)
+    private void DrawFormatBits(int msk)
+    {
+        var data = (int)_errorCorrectionLevel << 3 | msk;
+        var bits = FORMAT_BITS_REM[data];
+
+        var modules = _modules;
+        var size = _size;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+
+        SetFunctionModule(8, 0, GetBit(bits, 0), ref ptr, size);
+        SetFunctionModule(8, 1, GetBit(bits, 1), ref ptr, size);
+        SetFunctionModule(8, 2, GetBit(bits, 2), ref ptr, size);
+        SetFunctionModule(8, 3, GetBit(bits, 3), ref ptr, size);
+        SetFunctionModule(8, 4, GetBit(bits, 4), ref ptr, size);
+        SetFunctionModule(8, 5, GetBit(bits, 5), ref ptr, size);
+
+        SetFunctionModule(8, 7, GetBit(bits, 6), ref ptr, size);
+        SetFunctionModule(8, 8, GetBit(bits, 7), ref ptr, size);
+        SetFunctionModule(7, 8, GetBit(bits, 8), ref ptr, size);
+
+        SetFunctionModule(5, 8, GetBit(bits, 9), ref ptr, size);
+        SetFunctionModule(4, 8, GetBit(bits, 10), ref ptr, size);
+        SetFunctionModule(3, 8, GetBit(bits, 11), ref ptr, size);
+        SetFunctionModule(2, 8, GetBit(bits, 12), ref ptr, size);
+        SetFunctionModule(1, 8, GetBit(bits, 13), ref ptr, size);
+        SetFunctionModule(0, 8, GetBit(bits, 14), ref ptr, size);
+
+        SetFunctionModule(size - 1 - 0, 8, GetBit(bits, 0), ref ptr, size);
+        SetFunctionModule(size - 1 - 1, 8, GetBit(bits, 1), ref ptr, size);
+        SetFunctionModule(size - 1 - 2, 8, GetBit(bits, 2), ref ptr, size);
+        SetFunctionModule(size - 1 - 3, 8, GetBit(bits, 3), ref ptr, size);
+        SetFunctionModule(size - 1 - 4, 8, GetBit(bits, 4), ref ptr, size);
+        SetFunctionModule(size - 1 - 5, 8, GetBit(bits, 5), ref ptr, size);
+        SetFunctionModule(size - 1 - 6, 8, GetBit(bits, 6), ref ptr, size);
+        SetFunctionModule(size - 1 - 7, 8, GetBit(bits, 7), ref ptr, size);
+
+        SetFunctionModule(8, size - 15 + 8, GetBit(bits, 8), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 9, GetBit(bits, 9), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 10, GetBit(bits, 10), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 11, GetBit(bits, 11), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 12, GetBit(bits, 12), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 13, GetBit(bits, 13), ref ptr, size);
+        SetFunctionModule(8, size - 15 + 14, GetBit(bits, 14), ref ptr, size);
+
+        SetFunctionModule(8, size - 8, true, ref ptr, size);
+    }
+
+    private void DrawVersion()
     {
         var version = _version;
         if (version < 7)
             return;
-
-        var rem = version;
-        for (var i = 0; i < 12; i++)
-            rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
-        var bits = version << 12 | rem;
+        var bits = DRAW_VERSION_REM[version];
 
         var modules = _modules;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         var size = _size;
         // Draw two copies
@@ -528,151 +606,237 @@ public partial class QrCode
             var bit = GetBit(bits, i);
             var a = size - 11 + i % 3;
             var b = i / 3;
-            SetFunctionModule(a, b, bit, modules, isFunction);
-            SetFunctionModule(b, a, bit, modules, isFunction);
+            SetFunctionModule(a, b, bit, ref ptr, size);
+            SetFunctionModule(b, a, bit, ref ptr, size);
         }
     }
 
-    private void ApplyMask(int msk, bool[,] isFunction)
+    private void ApplyMask(int msk)
     {
         if (msk < 0 || msk > 7)
             throw new ArgumentException("Mask value out of range");
 
         var size = _size;
         var modules = _modules;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         if (msk == 0)
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x + y).IsEven();
+                {
+                    var apply = (x + y).IsEven() && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else if (msk == 1)
         {
             for (var y = 0; y < size; y++)
+            {
+                var isEven = y.IsEven();
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && y.IsEven();
+                {
+                    var apply = isEven && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else if (msk == 2)
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && x % 3 == 0;
+                {
+                    var apply = x % 3 == 0 && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else if (msk == 3)
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x + y) % 3 == 0;
+                {
+                    var apply = (x + y) % 3 == 0 && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else if (msk == 4)
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (x / 3 + y / 2).IsEven();
+                {
+                    var apply = (x / 3 + y / 2).IsEven() && !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction);
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else if (msk == 5)
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && ((x * y) & 1) + x * y % 3 == 0;
+                {
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && ((x * y) & 1) + x * y % 3 == 0;
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else if (msk == 6)
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && ((x * y & 1) + x * y % 3).IsEven();
+                {
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && ((x * y & 1) + x * y % 3).IsEven();
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
         }
         else
         {
             for (var y = 0; y < size; y++)
+            {
                 for (var x = 0; x < size; x++)
-                    modules[y, x] ^= !isFunction[y, x] && (((x + y) & 1) + x * y % 3).IsEven();
+                {
+                    var apply = !Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.IsFunction) && (((x + y) & 1) + x * y % 3).IsEven();
+                    SetMask(x, y, apply, ref ptr, size);
+                }
+            }
+        }
+    }
+
+    private static void SetMask(int x, int y, bool apply, ref ModuleState ptr, int size)
+    {
+        if (apply ^ Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.Module))
+        {
+            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
+            Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
+        }
+        else
+        {
+            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
+            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
         }
     }
 
     private int GetPenaltyScore()
     {
         var result = 0;
-        Span<int> runHistory = stackalloc int[7];
+
+        //Only first 7 positions are used, allocated only for aligment purposes
+        Span<int> runHistoryX = stackalloc int[16];
+        Span<int> runHistoryY = stackalloc int[16];
 
         var size = _size;
         var modules = _modules;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         for (int y = 0; y < size; y++)
         {
-            var runColor = false;
-            var runX = 0;
-            runHistory.Clear();
+            runHistoryX.Clear();
+            runHistoryY.Clear();
+
+            PenaltyState xState = new() { RunHistory = runHistoryX }, yState = new() { RunHistory = runHistoryY };
 
             for (int x = 0; x < size; x++)
             {
-                if (modules[y, x] == runColor)
+                var mod = Unsafe.Add(ref ptr, x * size + y);
+                xState.Current = mod.HasFlag(ModuleState.Reversed);
+                yState.Current = mod.HasFlag(ModuleState.Module);
+
+                result += PenaltyIteration(ref xState);
+                result += PenaltyIteration(ref yState);
+
+                if (x < size - 1 && y < size - 1)
                 {
-                    runX++;
-                    if (runX == 5)
-                        result += PENALTY_N1;
-                    else if (runX > 5)
-                        result++;
-                }
-                else
-                {
-                    FinderPenaltyAddHistory(runX, runHistory);
-                    if (!runColor)
-                        result += FinderPenaltyCountPatterns(runHistory) * PENALTY_N3;
-                    runColor = modules[y, x];
-                    runX = 1;
+                    if (xState.Current == Unsafe.Add(ref ptr, y * size + x + 1).HasFlag(ModuleState.Module) &&
+                        xState.Current == Unsafe.Add(ref ptr, (y + 1) * size + x).HasFlag(ModuleState.Module) &&
+                        xState.Current == Unsafe.Add(ref ptr, (y + 1) * size + x + 1).HasFlag(ModuleState.Module))
+                        result += PENALTY_N2;
                 }
             }
-            result += FinderPenaltyTerminateAndCount(runColor, runX, runHistory) * PENALTY_N3;
+            result += FinderPenaltyTerminateAndCount(xState.RunColor, xState.RunCordinate, runHistoryX) * PENALTY_N3;
+            result += FinderPenaltyTerminateAndCount(yState.RunColor, yState.RunCordinate, runHistoryY) * PENALTY_N3;
         }
 
-        for (var x = 0; x < size; x++)
-        {
-            var runColor = false;
-            var runY = 0;
-            runHistory.Clear();
-
-            for (int y = 0; y < size; y++)
-            {
-                if (modules[y, x] == runColor)
-                {
-                    runY++;
-                    if (runY == 5)
-                        result += PENALTY_N1;
-                    else if (runY > 5)
-                        result++;
-                }
-                else
-                {
-                    FinderPenaltyAddHistory(runY, runHistory);
-                    if (!runColor)
-                        result += FinderPenaltyCountPatterns(runHistory) * PENALTY_N3;
-                    runColor = modules[y, x];
-                    runY = 1;
-                }
-            }
-            result += FinderPenaltyTerminateAndCount(runColor, runY, runHistory) * PENALTY_N3;
-        }
-
-        for (var y = 0; y < size - 1; y++)
-        {
-            for (var x = 0; x < size - 1; x++)
-            {
-                var color = modules[y, x];
-                if (color == modules[y, x + 1] &&
-                    color == modules[y + 1, x] &&
-                    color == modules[y + 1, x + 1])
-                    result += PENALTY_N2;
-            }
-        }
-
-        var span = MemoryMarshal.CreateSpan(ref Unsafe.As<byte, bool>(ref MemoryMarshal.GetArrayDataReference(modules)), modules.Length);
-        var black = span.Count(true);
+        var black = CountModules();
 
         var total = size * size;
-        var k = (Math.Abs(black * 20 - total * 10) + total - 1) / total - 1;
+        var k = ((black * 20 - total * 10).SimpleAbs() + total - 1) / total - 1;
         result += k * PENALTY_N4;
+
+        return result;
+    }
+
+    private int PenaltyIteration(ref PenaltyState state)
+    {
+        if (state.Current == state.RunColor)
+        {
+            state.RunCordinate++;
+            if (state.RunCordinate == 5)
+                return PENALTY_N1;
+            else if (state.RunCordinate > 5)
+                return 1;
+
+            return 0;
+        }
+
+        var result = 0;
+
+        FinderPenaltyAddHistory(state.RunCordinate, state.RunHistory);
+        if (!state.RunColor)
+            result = FinderPenaltyCountPatterns(state.RunHistory) * PENALTY_N3;
+        state.RunColor = state.Current;
+        state.RunCordinate = 1;
+        return result;
+    }
+
+    private int CountModules()
+    {
+        var modules = _modules;
+        var span = MemoryMarshal.CreateSpan(ref MemoryMarshal.GetArrayDataReference(modules), modules.Length);
+        var result = 0;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            var black = Vector256.Create((byte)ModuleState.Module);
+            while (span.Length >= Vector256<byte>.Count)
+            {
+                var vec = Vector256.Create(span.Slice(0, Vector256<byte>.Count));
+                vec &= black;
+                var isBlack = Vector256.Equals(vec, black);
+                var mask = isBlack.ExtractMostSignificantBits();
+                result += BitOperations.PopCount(mask);
+                span = span.Slice(Vector256<byte>.Count);
+            }
+        }
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            var black = Vector128.Create((byte)ModuleState.Module);
+            while (span.Length >= Vector128<byte>.Count)
+            {
+                var vec = Vector128.Create(span.Slice(0, Vector128<byte>.Count));
+                vec &= black;
+                var isBlack = Vector128.Equals(vec, black);
+                var mask = isBlack.ExtractMostSignificantBits();
+                result += BitOperations.PopCount(mask);
+                span = span.Slice(Vector128<byte>.Count);
+            }
+        }
+
+        for (int i = 0; i < span.Length; i++)
+        {
+            var module = span[i];
+            if (((ModuleState)module).HasFlag(ModuleState.Module))
+                result++;
+        }
 
         return result;
     }
@@ -680,13 +844,24 @@ public partial class QrCode
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void FinderPenaltyAddHistory(int currentRunLength, Span<int> runHistory)
     {
-        if (runHistory[0] == 0)
+        ref var ptr = ref MemoryMarshal.GetReference(runHistory);
+
+        if (ptr == 0)
             currentRunLength += _size;
 
-        var aux = runHistory.Slice(0, runHistory.Length - 1);
-        var aux2 = runHistory.Slice(1);
-        aux.CopyTo(aux2);
-        runHistory[0] = currentRunLength;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            var vec = Vector256.LoadUnsafe(ref ptr);
+            vec.StoreUnsafe(ref ptr, 1);
+        }
+        else
+        {
+            var aux = runHistory.Slice(0, runHistory.Length - 1);
+            var aux2 = runHistory.Slice(1);
+            aux.CopyTo(aux2);
+        }
+
+        ptr = currentRunLength;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -694,15 +869,28 @@ public partial class QrCode
     {
         ref var hstPtr = ref MemoryMarshal.GetReference(runHistory);
         var n = Unsafe.Add(ref hstPtr, 1);
-        var n6 = Unsafe.Add(ref hstPtr, 6);
 
-        var core = n > 0 &&
-            Unsafe.Add(ref hstPtr, 2) == n &&
-            Unsafe.Add(ref hstPtr, 3) == n * 3 &&
-            Unsafe.Add(ref hstPtr, 4) == n &&
-            Unsafe.Add(ref hstPtr, 5) == n;
-        return (core && hstPtr >= n * 4 && n6 >= n ? 1 : 0)
-            + (core && n6 >= n * 4 && hstPtr >= n ? 1 : 0);
+        bool core = n > 0;
+        if (core)
+        {
+            if (Vector128.IsHardwareAccelerated)
+            {
+                var hstVec = Vector128.LoadUnsafe(ref hstPtr, 2);
+                var nVec = Vector128.Create(n) * Vector128.Create(1, 3, 1, 1);
+                core = hstVec == nVec;
+            }
+            else
+            {
+                core = Unsafe.Add(ref hstPtr, 2) == n &&
+                Unsafe.Add(ref hstPtr, 3) == n * 3 &&
+                Unsafe.Add(ref hstPtr, 4) == n &&
+                Unsafe.Add(ref hstPtr, 5) == n;
+            }
+        }
+
+        var n6 = Unsafe.Add(ref hstPtr, 6);
+        return (core && n6 >= n && hstPtr >= n * 4 ? 1 : 0)
+            + (core && hstPtr >= n && n6 >= n * 4 ? 1 : 0);
     }
 
     private int FinderPenaltyTerminateAndCount(bool currentRunColor, int currentRunLength, Span<int> runHistory)

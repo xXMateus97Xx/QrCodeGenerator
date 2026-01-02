@@ -11,16 +11,17 @@ namespace QrCodeGenerator;
 
 public static class QrSegmentAdvanced
 {
-    private static readonly short[] UNICODE_TO_QR_KANJI = GC.AllocateUninitializedArray<short>(1 << 16);
+    private static readonly short[] UNICODE_TO_QR_KANJI = InitializeKanjiChars();
 
-    // Data derived from ftp://ftp.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/JIS/SHIFTJIS.TXT
-    static QrSegmentAdvanced()
+    private static short[] InitializeKanjiChars()
     {
+        var arr = GC.AllocateUninitializedArray<short>(1 << 16);
+
         using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("QrCodeGenerator.kanji.txt");
 
-        Array.Fill<short>(UNICODE_TO_QR_KANJI, -1);
+        Array.Fill<short>(arr, -1);
 
-        ref var unicodeToKanji = ref MemoryMarshal.GetReference(UNICODE_TO_QR_KANJI);
+        ref var unicodeToKanji = ref MemoryMarshal.GetReference(arr);
 
         Span<byte> bytes = stackalloc byte[2];
 
@@ -34,6 +35,8 @@ public static class QrSegmentAdvanced
 
             Unsafe.Add(ref unicodeToKanji, c) = (short)(i / 2);
         }
+
+        return arr;
     }
 
     public static ReadOnlyMemory<QrSegment> MakeSegmentsOptimally(string text, Ecc ecl, int minVersion, int maxVersion)
