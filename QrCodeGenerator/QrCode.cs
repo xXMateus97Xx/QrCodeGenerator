@@ -316,7 +316,8 @@ public partial class QrCode
 
         // Interleave (not concatenate) the bytes from every block into a single sequence
         ref var resultPtr = ref MemoryMarshal.GetReference(result);
-        for (int i = 0, k = 0; i < blocks[0].Length; i++)
+        var firstBlockSize = blocksPtr.Length;
+        for (int i = 0, k = 0; i < firstBlockSize; i++)
         {
             for (int j = 0; j < blocks.Length; j++)
             {
