@@ -24,6 +24,10 @@ public partial class QrCode
         [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8,  8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68],  // Quartile
     ];
 
+    private static readonly int[] FORMAT_BITS_REM = InitializeFormatBits();
+
+    private static readonly int[] DRAW_VERSION_REM = InitializeDrawVersionRem();
+
     private static ReadOnlySpan<byte> SVG_UTF8_HEADER => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"u8;
     private static ReadOnlySpan<byte> SVG_UTF8_HEADER2 => "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n"u8;
     private static ReadOnlySpan<byte> SVG_UTF8_SVG => "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 "u8;
@@ -63,6 +67,42 @@ public partial class QrCode
         public int RunCordinate;
         public bool RunColor;
         public bool Current;
+    }
+
+    static int[] InitializeFormatBits()
+    {
+        var arr = new int[((int)Ecc.Quartitle << 3 | 7) + 1];
+
+        for (var msk = 0; msk <= 7; msk++)
+        {
+            for (var ecc = (int)Ecc.Medium; ecc <= (int)Ecc.Quartitle; ecc++)
+            {
+                var data = ecc << 3 | msk;
+                var rem = data;
+                for (var i = 0; i < 10; i++)
+                    rem = (rem << 1) ^ ((rem >> 9) * 0x537);
+                var bits = (data << 10 | rem) ^ 0x5412;
+                arr[data] = bits;
+            }
+        }
+
+        return arr;
+    }
+
+    static int[] InitializeDrawVersionRem()
+    {
+        var arr = new int[MAX_VERSION + 1];
+
+        for (int version = 7; version <= MAX_VERSION; version++)
+        {
+            var rem = version;
+            for (var i = 0; i < 12; i++)
+                rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
+            var bits = version << 12 | rem;
+            arr[version] = bits;
+        }
+
+        return arr;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

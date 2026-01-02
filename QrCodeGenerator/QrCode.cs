@@ -544,10 +544,7 @@ public partial class QrCode
     private void DrawFormatBits(int msk)
     {
         var data = (int)_errorCorrectionLevel << 3 | msk;
-        var rem = data;
-        for (var i = 0; i < 10; i++)
-            rem = (rem << 1) ^ ((rem >> 9) * 0x537);
-        var bits = (data << 10 | rem) ^ 0x5412;
+        var bits = FORMAT_BITS_REM[data];
 
         var modules = _modules;
         var size = _size;
@@ -596,11 +593,7 @@ public partial class QrCode
         var version = _version;
         if (version < 7)
             return;
-
-        var rem = version;
-        for (var i = 0; i < 12; i++)
-            rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
-        var bits = version << 12 | rem;
+        var bits = DRAW_VERSION_REM[version];
 
         var modules = _modules;
         ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
