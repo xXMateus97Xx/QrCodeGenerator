@@ -729,20 +729,24 @@ public partial class QrCode
     {
         var result = 0;
 
-        //Only first 7 positions are used, allocated only for aligment purposes
-        Span<int> runHistoryX = stackalloc int[16];
-        Span<int> runHistoryY = stackalloc int[16];
-
+        int[] xPooled = null, yPooled = null;
         var size = _size;
+
+        Span<int> runHistoryX = size <= 128 ? stackalloc int[128] : (xPooled = ArrayPool<int>.Shared.Rent(size));
+        Span<int> runHistoryY = size <= 128 ? stackalloc int[128] : (yPooled = ArrayPool<int>.Shared.Rent(size));
+
+        ref var xPtr = ref MemoryMarshal.GetReference(runHistoryX);
+        ref var yPtr = ref MemoryMarshal.GetReference(runHistoryY);
+
         var modules = _modules;
         ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         for (int y = 0; y < size; y++)
         {
-            runHistoryX.Clear();
-            runHistoryY.Clear();
+            xPtr = 0;
+            yPtr = 0;
 
-            PenaltyState xState = new() { RunHistory = runHistoryX }, yState = new() { RunHistory = runHistoryY };
+            PenaltyState xState = new() { RunHistory = ref xPtr }, yState = new() { RunHistory = ref yPtr };
 
             for (int x = 0; x < size; x++)
             {
@@ -761,8 +765,8 @@ public partial class QrCode
                         result += PENALTY_N2;
                 }
             }
-            result += FinderPenaltyTerminateAndCount(xState.RunColor, xState.RunCordinate, runHistoryX) * PENALTY_N3;
-            result += FinderPenaltyTerminateAndCount(yState.RunColor, yState.RunCordinate, runHistoryY) * PENALTY_N3;
+            result += FinderPenaltyTerminateAndCount(ref xState) * PENALTY_N3;
+            result += FinderPenaltyTerminateAndCount(ref yState) * PENALTY_N3;
         }
 
         var black = CountModules();
@@ -770,6 +774,12 @@ public partial class QrCode
         var total = size * size;
         var k = ((black * 20 - total * 10).SimpleAbs() + total - 1) / total - 1;
         result += k * PENALTY_N4;
+
+        if (xPooled != null)
+            ArrayPool<int>.Shared.Return(xPooled);
+
+        if (yPooled != null)
+            ArrayPool<int>.Shared.Return(yPooled);
 
         return result;
     }
@@ -779,19 +789,21 @@ public partial class QrCode
         if (state.Current == state.RunColor)
         {
             state.RunCordinate++;
+
+            if (state.RunCordinate < 5)
+                return 0;
+
             if (state.RunCordinate == 5)
                 return PENALTY_N1;
-            else if (state.RunCordinate > 5)
-                return 1;
 
-            return 0;
+            return 1;
         }
 
         var result = 0;
 
-        FinderPenaltyAddHistory(state.RunCordinate, state.RunHistory);
+        FinderPenaltyAddHistory(ref state);
         if (!state.RunColor)
-            result = FinderPenaltyCountPatterns(state.RunHistory) * PENALTY_N3;
+            result = FinderPenaltyCountPatterns(ref state.RunHistory, state.HistoryPosition) * PENALTY_N3;
         state.RunColor = state.Current;
         state.RunCordinate = 1;
         return result;
@@ -842,66 +854,58 @@ public partial class QrCode
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void FinderPenaltyAddHistory(int currentRunLength, Span<int> runHistory)
+    private void FinderPenaltyAddHistory(ref PenaltyState state)
     {
-        ref var ptr = ref MemoryMarshal.GetReference(runHistory);
+        var currentRunLength = state.RunCordinate;
 
-        if (ptr == 0)
+        var position = Math.Min(state.HistoryPosition - 1, 0);
+
+        if (Unsafe.Add(ref state.RunHistory, position) == 0)
             currentRunLength += _size;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            var vec = Vector256.LoadUnsafe(ref ptr);
-            vec.StoreUnsafe(ref ptr, 1);
-        }
-        else
-        {
-            var aux = runHistory.Slice(0, runHistory.Length - 1);
-            var aux2 = runHistory.Slice(1);
-            aux.CopyTo(aux2);
-        }
-
-        ptr = currentRunLength;
+        Unsafe.Add(ref state.RunHistory, state.HistoryPosition) = currentRunLength;
+        state.HistoryPosition++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FinderPenaltyCountPatterns(ReadOnlySpan<int> runHistory)
+    private static int FinderPenaltyCountPatterns(ref int runHistory, nuint position)
     {
-        ref var hstPtr = ref MemoryMarshal.GetReference(runHistory);
-        var n = Unsafe.Add(ref hstPtr, 1);
+        ref var hstPtr = ref runHistory;
+        var n0 = Unsafe.Add(ref hstPtr, position - 1);
+        var n = Unsafe.Add(ref hstPtr, position - 2);
 
         bool core = n > 0;
         if (core)
         {
             if (Vector128.IsHardwareAccelerated)
             {
-                var hstVec = Vector128.LoadUnsafe(ref hstPtr, 2);
-                var nVec = Vector128.Create(n) * Vector128.Create(1, 3, 1, 1);
+                var hstVec = Vector128.LoadUnsafe(ref hstPtr, position - 6);
+                var nVec = Vector128.Create(n) * Vector128.Create(1, 1, 3, 1);
                 core = hstVec == nVec;
             }
             else
             {
-                core = Unsafe.Add(ref hstPtr, 2) == n &&
-                Unsafe.Add(ref hstPtr, 3) == n * 3 &&
-                Unsafe.Add(ref hstPtr, 4) == n &&
-                Unsafe.Add(ref hstPtr, 5) == n;
+                core = Unsafe.Add(ref hstPtr, position - 3) == n &&
+                Unsafe.Add(ref hstPtr, position - 4) == n * 3 &&
+                Unsafe.Add(ref hstPtr, position - 5) == n &&
+                Unsafe.Add(ref hstPtr, position - 6) == n;
             }
         }
 
-        var n6 = Unsafe.Add(ref hstPtr, 6);
-        return (core && n6 >= n && hstPtr >= n * 4 ? 1 : 0)
-            + (core && hstPtr >= n && n6 >= n * 4 ? 1 : 0);
+        var n6 = Unsafe.Add(ref hstPtr, position - 7);
+        return (core && n6 >= n && n0 >= n * 4 ? 1 : 0)
+            + (core && n0 >= n && n6 >= n * 4 ? 1 : 0);
     }
 
-    private int FinderPenaltyTerminateAndCount(bool currentRunColor, int currentRunLength, Span<int> runHistory)
+    private int FinderPenaltyTerminateAndCount(ref PenaltyState state)
     {
-        if (currentRunColor)
+        if (state.RunColor)
         {
-            FinderPenaltyAddHistory(currentRunLength, runHistory);
-            currentRunLength = 0;
+            FinderPenaltyAddHistory(ref state);
+            state.RunCordinate = 0;
         }
-        currentRunLength += _size;
-        FinderPenaltyAddHistory(currentRunLength, runHistory);
-        return FinderPenaltyCountPatterns(runHistory);
+        state.RunCordinate += _size;
+        FinderPenaltyAddHistory(ref state);
+        return FinderPenaltyCountPatterns(ref state.RunHistory, state.HistoryPosition);
     }
 }

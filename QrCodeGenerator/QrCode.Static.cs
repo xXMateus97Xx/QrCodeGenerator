@@ -63,7 +63,8 @@ public partial class QrCode
     [StructLayout(LayoutKind.Auto)]
     ref struct PenaltyState
     {
-        public Span<int> RunHistory;
+        public ref int RunHistory;
+        public nuint HistoryPosition;
         public int RunCordinate;
         public bool RunColor;
         public bool Current;
