@@ -145,7 +145,7 @@ public partial class QrCode
         var sStringSize = (((int)Math.Floor(Math.Log10(s))) + 1) * 2;
         var estimatedSize = SVG_UTF8_HEADER.Length +
             SVG_UTF8_HEADER2.Length +
-            SVG_UTF8_SVG.Length + sStringSize +
+            SVG_UTF8_SVG.Length + SVG_UTF8_SPACE.Length + sStringSize +
             SVG_UTF8_SVG2.Length +
             SVG_UTF8_RECT.Length +
             SVG_UTF8_PATH.Length +
@@ -156,19 +156,24 @@ public partial class QrCode
         var arr = ArrayPool<byte>.Shared.Rent(estimatedSize);
 
         var arrSpan = arr.AsSpan();
-        var pos = 0;
+        var pos = SVG_UTF8_HEADER.Length +
+            SVG_UTF8_HEADER2.Length +
+            SVG_UTF8_SPACE.Length +
+            SVG_UTF8_SVG.Length +
+            SVG_UTF8_SVG2.Length +
+            SVG_UTF8_RECT.Length +
+            SVG_UTF8_PATH.Length +
+            SVG_UTF8_END_PATH.Length +
+            SVG_UTF8_END_SVG.Length;
 
         SVG_UTF8_HEADER.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_HEADER.Length);
-        pos += SVG_UTF8_HEADER.Length;
 
         SVG_UTF8_HEADER2.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_HEADER2.Length);
-        pos += SVG_UTF8_HEADER2.Length;
 
         SVG_UTF8_SVG.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_SVG.Length);
-        pos += SVG_UTF8_SVG.Length;
 
         Utf8Formatter.TryFormat(s, arrSpan, out var written);
         arrSpan = arrSpan.Slice(written);
@@ -176,7 +181,6 @@ public partial class QrCode
 
         SVG_UTF8_SPACE.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_SPACE.Length);
-        pos += SVG_UTF8_SPACE.Length;
 
         Utf8Formatter.TryFormat(s, arrSpan, out written);
         arrSpan = arrSpan.Slice(written);
@@ -184,15 +188,12 @@ public partial class QrCode
 
         SVG_UTF8_SVG2.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_SVG2.Length);
-        pos += SVG_UTF8_SVG2.Length;
 
         SVG_UTF8_RECT.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_RECT.Length);
-        pos += SVG_UTF8_RECT.Length;
 
         SVG_UTF8_PATH.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_PATH.Length);
-        pos += SVG_UTF8_PATH.Length;
 
         var modules = _modules;
 
@@ -208,10 +209,10 @@ public partial class QrCode
                         arrSpan = arrSpan.Slice(SVG_UTF8_SPACE.Length);
                         pos += SVG_UTF8_SPACE.Length;
                     }
+                    pos += SVG_UTF8_CELL.Length + SVG_UTF8_CELL2.Length + SVG_UTF8_CELL3.Length;
 
                     SVG_UTF8_CELL.CopyTo(arrSpan);
                     arrSpan = arrSpan.Slice(SVG_UTF8_CELL.Length);
-                    pos += SVG_UTF8_CELL.Length;
 
                     Utf8Formatter.TryFormat(x + border, arrSpan, out written);
                     arrSpan = arrSpan.Slice(written);
@@ -219,7 +220,6 @@ public partial class QrCode
 
                     SVG_UTF8_CELL2.CopyTo(arrSpan);
                     arrSpan = arrSpan.Slice(SVG_UTF8_CELL2.Length);
-                    pos += SVG_UTF8_CELL2.Length;
 
                     Utf8Formatter.TryFormat(y + border, arrSpan, out written);
                     arrSpan = arrSpan.Slice(written);
@@ -227,17 +227,14 @@ public partial class QrCode
 
                     SVG_UTF8_CELL3.CopyTo(arrSpan);
                     arrSpan = arrSpan.Slice(SVG_UTF8_CELL3.Length);
-                    pos += SVG_UTF8_CELL3.Length;
                 }
             }
         }
 
         SVG_UTF8_END_PATH.CopyTo(arrSpan);
         arrSpan = arrSpan.Slice(SVG_UTF8_END_PATH.Length);
-        pos += SVG_UTF8_END_PATH.Length;
 
         SVG_UTF8_END_SVG.CopyTo(arrSpan);
-        pos += SVG_UTF8_END_SVG.Length;
 
         var bytes = new byte[pos];
 
@@ -395,17 +392,18 @@ public partial class QrCode
                     var x = right - j;
                     var upward = ((right + 1) & 2) == 0;
                     var y = upward ? size - 1 - vert : vert;
-                    if (!Unsafe.Add(ref modulePtr, y * size + x).HasFlag(ModuleState.IsFunction) && i < data.Length * 8)
+                    ref var p = ref Unsafe.Add(ref modulePtr, y * size + x);
+                    if (!p.HasFlag(ModuleState.IsFunction) && i < data.Length * 8)
                     {
                         var bit = GetBit(Unsafe.Add(ref dataPtr, i >> 3), 7 - (i & 7));
                         if (bit)
                         {
-                            Unsafe.Add(ref modulePtr, y * size + x) |= ModuleState.Module;
+                            p |= ModuleState.Module;
                             Unsafe.Add(ref modulePtr, x * size + y) |= ModuleState.Reversed;
                         }
                         else
                         {
-                            Unsafe.Add(ref modulePtr, y * size + x) &= ~ModuleState.Module;
+                            p &= ~ModuleState.Module;
                             Unsafe.Add(ref modulePtr, x * size + y) &= ~ModuleState.Reversed;
                         }
                         i++;
@@ -442,17 +440,18 @@ public partial class QrCode
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetFunctionModule(int x, int y, bool isBlack, ref ModuleState ptr, int size)
     {
+        ref var p = ref Unsafe.Add(ref ptr, y * size + x);
         if (isBlack)
         {
             Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
-            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
+            p |= ModuleState.Module;
         }
         else
         {
             Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
-            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
+            p &= ~ModuleState.Module;
         }
-        Unsafe.Add(ref ptr, y * size + x) |= ModuleState.IsFunction;
+        p |= ModuleState.IsFunction;
     }
 
     private void DrawFinderPattern(int x, int y)
@@ -713,14 +712,15 @@ public partial class QrCode
 
     private static void SetMask(int x, int y, bool apply, ref ModuleState ptr, int size)
     {
-        if (apply ^ Unsafe.Add(ref ptr, y * size + x).HasFlag(ModuleState.Module))
+        ref var p = ref Unsafe.Add(ref ptr, y * size + x);
+        if (apply ^ p.HasFlag(ModuleState.Module))
         {
-            Unsafe.Add(ref ptr, y * size + x) |= ModuleState.Module;
+            p |= ModuleState.Module;
             Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
         }
         else
         {
-            Unsafe.Add(ref ptr, y * size + x) &= ~ModuleState.Module;
+            p &= ~ModuleState.Module;
             Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
         }
     }
