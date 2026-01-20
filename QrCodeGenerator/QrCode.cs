@@ -443,15 +443,15 @@ public partial class QrCode
         ref var p = ref Unsafe.Add(ref ptr, y * size + x);
         if (isBlack)
         {
+            p |= ModuleState.Module | ModuleState.IsFunction;
             Unsafe.Add(ref ptr, x * size + y) |= ModuleState.Reversed;
-            p |= ModuleState.Module;
         }
         else
         {
-            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
             p &= ~ModuleState.Module;
+            p |= ModuleState.IsFunction;
+            Unsafe.Add(ref ptr, x * size + y) &= ~ModuleState.Reversed;
         }
-        p |= ModuleState.IsFunction;
     }
 
     private void DrawFinderPattern(int x, int y)
@@ -728,12 +728,10 @@ public partial class QrCode
     private int GetPenaltyScore()
     {
         var result = 0;
-
-        int[] xPooled = null, yPooled = null;
         var size = _size;
 
-        Span<int> runHistoryX = size <= 128 ? stackalloc int[128] : (xPooled = ArrayPool<int>.Shared.Rent(size));
-        Span<int> runHistoryY = size <= 128 ? stackalloc int[128] : (yPooled = ArrayPool<int>.Shared.Rent(size));
+        Span<int> runHistoryX = size <= 128 ? stackalloc int[128] : new int[size];
+        Span<int> runHistoryY = size <= 128 ? stackalloc int[128] : new int[size];
 
         ref var xPtr = ref MemoryMarshal.GetReference(runHistoryX);
         ref var yPtr = ref MemoryMarshal.GetReference(runHistoryY);
@@ -750,9 +748,9 @@ public partial class QrCode
 
             for (int x = 0; x < size; x++)
             {
-                var mod = Unsafe.Add(ref ptr, x * size + y);
-                xState.Current = mod.HasFlag(ModuleState.Reversed);
-                yState.Current = mod.HasFlag(ModuleState.Module);
+                var mod = Unsafe.Add(ref ptr, y * size + x);
+                xState.Current = mod.HasFlag(ModuleState.Module);
+                yState.Current = mod.HasFlag(ModuleState.Reversed);
 
                 result += PenaltyIteration(ref xState);
                 result += PenaltyIteration(ref yState);
@@ -774,12 +772,6 @@ public partial class QrCode
         var total = size * size;
         var k = ((black * 20 - total * 10).SimpleAbs() + total - 1) / total - 1;
         result += k * PENALTY_N4;
-
-        if (xPooled != null)
-            ArrayPool<int>.Shared.Return(xPooled);
-
-        if (yPooled != null)
-            ArrayPool<int>.Shared.Return(yPooled);
 
         return result;
     }
