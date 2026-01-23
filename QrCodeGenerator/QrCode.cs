@@ -431,8 +431,8 @@ public partial class QrCode
                 span.CopyTo(modulesCopySpan);
                 ApplyMask(i, ref copyPtr);
                 DrawFormatBits(i, ref copyPtr);
-                int penalty = GetPenaltyScore(ref copyPtr);
-                if (penalty < minPenalty)
+                var penalty = GetPenaltyScore(ref copyPtr, minPenalty);
+                if (penalty != -1)
                 {
                     msk = i;
                     minPenalty = penalty;
@@ -732,7 +732,7 @@ public partial class QrCode
         }
     }
 
-    private int GetPenaltyScore(ref ModuleState ptr)
+    private int GetPenaltyScore(ref ModuleState ptr, int currentScore)
     {
         var result = 0;
         var size = _size;
@@ -768,6 +768,9 @@ public partial class QrCode
             }
             result += FinderPenaltyTerminateAndCount(ref xState) * PENALTY_N3;
             result += FinderPenaltyTerminateAndCount(ref yState) * PENALTY_N3;
+
+            if (result >= currentScore)
+                return -1;
         }
 
         var black = CountModules();
@@ -776,7 +779,7 @@ public partial class QrCode
         var k = ((black * 20 - total * 10).SimpleAbs() + total - 1) / total - 1;
         result += k * PENALTY_N4;
 
-        return result;
+        return result < currentScore ? result : -1;
     }
 
     private int PenaltyIteration(ref PenaltyState state)
