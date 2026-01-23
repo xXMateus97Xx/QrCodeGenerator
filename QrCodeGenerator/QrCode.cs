@@ -426,7 +426,6 @@ public partial class QrCode
             var modulesCopy = ArrayPool<byte>.Shared.Rent(size * size);
             ref var copyPtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetReference(modulesCopy));
             var modulesCopySpan = MemoryMarshal.CreateSpan(ref copyPtr, modulesCopy.Length);
-            msk = 1;
             for (int i = 0; i < 8; i++)
             {
                 span.CopyTo(modulesCopySpan);
