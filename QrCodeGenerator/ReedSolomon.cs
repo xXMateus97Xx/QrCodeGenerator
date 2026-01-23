@@ -26,7 +26,7 @@ public static class ReedSolomon
         {
             for (var j = 0; j < result.Length; j++)
             {
-                result[j] = (byte)ReedSolomonMultiply(result[j], root);
+                result[j] = ReedSolomonMultiply(result[j], root);
                 if (j + 1 < result.Length)
                     result[j] ^= result[j + 1];
             }
@@ -40,66 +40,82 @@ public static class ReedSolomon
     {
         var degree = result.Length;
 
-        var root = 1;
+        short root = 1;
         for (int i = 0; i < degree; i++)
         {
             var copy = result;
 
-            if (Vector256.IsHardwareAccelerated && copy.Length >= Vector256<int>.Count)
+            if (Vector256.IsHardwareAccelerated && copy.Length >= Vector256<short>.Count)
             {
                 var rootVec = Vector256.Create(root);
 
-                while (copy.Length >= Vector256<int>.Count)
+                while (copy.Length >= Vector256<short>.Count)
                 {
-                    var v = Vector256.Create(copy[0], copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7]);
+                    var v = Vector256.Create(copy[0], copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7],
+                        copy[8], copy[9], copy[10], copy[11], copy[12], copy[13], copy[14], copy[15]);
                     v = ReedSolomonMultiply(v, rootVec);
 
-                    Vector256<int> v2;
-                    if (copy.Length > Vector256<int>.Count)
-                        v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8]);
+                    Vector256<short> v2;
+                    if (copy.Length > Vector256<short>.Count)
+                        v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8],
+                                copy[9], copy[10], copy[11], copy[12], copy[13], copy[14], copy[15], copy[16]);
                     else
-                        v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], 0);
+                        v2 = Vector256.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7],
+                            copy[8], copy[9], copy[10], copy[11], copy[12], copy[13], copy[14], copy[15], 0);
 
                     v ^= v2;
                     var byteV = v.AsByte();
 
                     copy[0] = byteV[0];
-                    copy[1] = byteV[4];
-                    copy[2] = byteV[8];
-                    copy[3] = byteV[12];
-                    copy[4] = byteV[16];
-                    copy[5] = byteV[20];
-                    copy[6] = byteV[24];
-                    copy[7] = byteV[28];
+                    copy[1] = byteV[2];
+                    copy[2] = byteV[4];
+                    copy[3] = byteV[6];
+                    copy[4] = byteV[8];
+                    copy[5] = byteV[10];
+                    copy[6] = byteV[12];
+                    copy[7] = byteV[14];
+                    copy[8] = byteV[16];
+                    copy[9] = byteV[18];
+                    copy[10] = byteV[20];
+                    copy[11] = byteV[22];
+                    copy[12] = byteV[24];
+                    copy[13] = byteV[26];
+                    copy[14] = byteV[28];
+                    copy[15] = byteV[30];
 
-                    copy = copy.Slice(Vector256<int>.Count);
+                    copy = copy.Slice(Vector256<short>.Count);
                 }
             }
 
-            if (Vector128.IsHardwareAccelerated && copy.Length >= Vector128<int>.Count)
+            if (Vector128.IsHardwareAccelerated && copy.Length >= Vector128<short>.Count)
             {
                 var rootVec = Vector128.Create(root);
 
-                while (copy.Length >= Vector128<int>.Count)
+                while (copy.Length >= Vector128<short>.Count)
                 {
-                    var v = Vector128.Create(copy[0], copy[1], copy[2], copy[3]);
+                    var v = Vector128.Create(copy[0], copy[1], copy[2], copy[3],
+                        copy[4], copy[5], copy[6], copy[7]);
                     v = ReedSolomonMultiply(v, rootVec);
 
-                    Vector128<int> v2;
-                    if (copy.Length > Vector128<int>.Count)
-                        v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4]);
+                    Vector128<short> v2;
+                    if (copy.Length > Vector128<short>.Count)
+                        v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], copy[8]);
                     else
-                        v2 = Vector128.Create(copy[1], copy[2], copy[3], 0);
+                        v2 = Vector128.Create(copy[1], copy[2], copy[3], copy[4], copy[5], copy[6], copy[7], 0);
 
                     v ^= v2;
                     var byteV = v.AsByte();
 
                     copy[0] = byteV[0];
-                    copy[1] = byteV[4];
-                    copy[2] = byteV[8];
-                    copy[3] = byteV[12];
+                    copy[1] = byteV[2];
+                    copy[2] = byteV[4];
+                    copy[3] = byteV[6];
+                    copy[4] = byteV[8];
+                    copy[5] = byteV[10];
+                    copy[6] = byteV[12];
+                    copy[7] = byteV[14];
 
-                    copy = copy.Slice(Vector128<int>.Count);
+                    copy = copy.Slice(Vector128<short>.Count);
                 }
             }
 
@@ -107,7 +123,7 @@ public static class ReedSolomon
             {
                 for (var j = 0; j < copy.Length; j++)
                 {
-                    copy[j] = (byte)ReedSolomonMultiply(copy[j], root);
+                    copy[j] = ReedSolomonMultiply(copy[j], root);
                     if (j + 1 < copy.Length)
                         copy[j] ^= copy[j + 1];
                 }
@@ -117,13 +133,13 @@ public static class ReedSolomon
         }
     }
 
-    private static Vector128<int> ReedSolomonMultiply(Vector128<int> x, Vector128<int> y)
+    private static Vector128<short> ReedSolomonMultiply(Vector128<short> x, Vector128<short> y)
     {
-        if (x == Vector128<int>.Zero)
-            return Vector128<int>.Zero;
+        if (x == Vector128<short>.Zero)
+            return Vector128<short>.Zero;
 
-        var z = Vector128<int>.Zero;
-        var one = Vector128<int>.One;
+        var z = Vector128<short>.Zero;
+        var one = Vector128<short>.One;
         z ^= ((y >> 7) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
@@ -150,13 +166,13 @@ public static class ReedSolomon
         return z;
     }
 
-    private static Vector256<int> ReedSolomonMultiply(Vector256<int> x, Vector256<int> y)
+    private static Vector256<short> ReedSolomonMultiply(Vector256<short> x, Vector256<short> y)
     {
-        if (x == Vector256<int>.Zero)
-            return Vector256<int>.Zero;
+        if (x == Vector256<short>.Zero)
+            return Vector256<short>.Zero;
 
-        var z = Vector256<int>.Zero;
-        var one = Vector256<int>.One;
+        var z = Vector256<short>.Zero;
+        var one = Vector256<short>.One;
         z ^= ((y >> 7) & one) * x;
 
         z = (z << 1) ^ ((z >> 7) * 0x11D);
@@ -183,7 +199,7 @@ public static class ReedSolomon
         return z;
     }
 
-    private static int ReedSolomonMultiply(int x, int y)
+    private static byte ReedSolomonMultiply(int x, int y)
     {
         if (x == 0) return 0;
 
@@ -211,7 +227,7 @@ public static class ReedSolomon
         z = (z << 1) ^ ((z >> 7) * 0x11D);
         z ^= (y & 1) * x;
 
-        return z;
+        return (byte)z;
     }
 
     public static void ReedSolomonComputeRemainder(ReadOnlySpan<byte> data, ReadOnlySpan<byte> divisor, Span<byte> destiny)

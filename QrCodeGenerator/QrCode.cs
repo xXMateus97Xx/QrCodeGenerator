@@ -364,7 +364,7 @@ public partial class QrCode
         }
 
         // Draw configuration data
-        DrawFormatBits(0);  // Dummy mask value; overwritten later in the constructor
+        DrawFormatBits(0, ref ptr); // Dummy mask value; overwritten later in the constructor
         DrawVersion();
     }
 
@@ -415,25 +415,36 @@ public partial class QrCode
 
     private int HandleConstructorMasking(int msk)
     {
+        var modules = _modules;
+        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+        var span = MemoryMarshal.CreateSpan(ref ptr, modules.Length);
+
         if (msk == -1)
         {
             int minPenalty = int.MaxValue;
+            var size = _size;
+            var modulesCopy = ArrayPool<byte>.Shared.Rent(size * size);
+            ref var copyPtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetReference(modulesCopy));
+            var modulesCopySpan = MemoryMarshal.CreateSpan(ref copyPtr, modulesCopy.Length);
+            msk = 1;
             for (int i = 0; i < 8; i++)
             {
-                ApplyMask(i);
-                DrawFormatBits(i);
-                int penalty = GetPenaltyScore();
+                span.CopyTo(modulesCopySpan);
+                ApplyMask(i, ref copyPtr);
+                DrawFormatBits(i, ref copyPtr);
+                int penalty = GetPenaltyScore(ref copyPtr);
                 if (penalty < minPenalty)
                 {
                     msk = i;
                     minPenalty = penalty;
                 }
-                ApplyMask(i);
             }
+
+            ArrayPool<byte>.Shared.Return(modulesCopy);
         }
 
-        ApplyMask(msk);
-        DrawFormatBits(msk);
+        ApplyMask(msk, ref ptr);
+        DrawFormatBits(msk, ref ptr);
         return msk;
     }
 
@@ -541,14 +552,12 @@ public partial class QrCode
         SetFunctionModule(x + 2, y + 2, true, ref ptr, size);
     }
 
-    private void DrawFormatBits(int msk)
+    private void DrawFormatBits(int msk, ref ModuleState ptr)
     {
         var data = (int)_errorCorrectionLevel << 3 | msk;
         var bits = FORMAT_BITS_REM[data];
 
-        var modules = _modules;
         var size = _size;
-        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         SetFunctionModule(8, 0, GetBit(bits, 0), ref ptr, size);
         SetFunctionModule(8, 1, GetBit(bits, 1), ref ptr, size);
@@ -610,14 +619,13 @@ public partial class QrCode
         }
     }
 
-    private void ApplyMask(int msk)
+    private void ApplyMask(int msk, ref ModuleState ptr)
     {
         if (msk < 0 || msk > 7)
             throw new ArgumentException("Mask value out of range");
 
         var size = _size;
         var modules = _modules;
-        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
 
         if (msk == 0)
         {
@@ -725,19 +733,15 @@ public partial class QrCode
         }
     }
 
-    private int GetPenaltyScore()
+    private int GetPenaltyScore(ref ModuleState ptr)
     {
         var result = 0;
         var size = _size;
 
-        Span<int> runHistoryX = size <= 128 ? stackalloc int[128] : new int[size];
-        Span<int> runHistoryY = size <= 128 ? stackalloc int[128] : new int[size];
+        Span<int> history = size * 2 <= 256 ? stackalloc int[256] : new int[size * 2];
 
-        ref var xPtr = ref MemoryMarshal.GetReference(runHistoryX);
-        ref var yPtr = ref MemoryMarshal.GetReference(runHistoryY);
-
-        var modules = _modules;
-        ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
+        ref var xPtr = ref MemoryMarshal.GetReference(history);
+        ref var yPtr = ref Unsafe.Add(ref xPtr, size);
 
         for (int y = 0; y < size; y++)
         {
@@ -804,42 +808,44 @@ public partial class QrCode
     private int CountModules()
     {
         var modules = _modules;
-        var span = MemoryMarshal.CreateSpan(ref MemoryMarshal.GetArrayDataReference(modules), modules.Length);
+        ref var ptr = ref MemoryMarshal.GetArrayDataReference(modules);
+        ref var end = ref Unsafe.Add(ref ptr, modules.Length);
         var result = 0;
 
         if (Vector256.IsHardwareAccelerated)
         {
             var black = Vector256.Create((byte)ModuleState.Module);
-            while (span.Length >= Vector256<byte>.Count)
+            while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref ptr, Vector256<byte>.Count), ref end))
             {
-                var vec = Vector256.Create(span.Slice(0, Vector256<byte>.Count));
+                var vec = Vector256.LoadUnsafe(ref ptr);
                 vec &= black;
                 var isBlack = Vector256.Equals(vec, black);
                 var mask = isBlack.ExtractMostSignificantBits();
                 result += BitOperations.PopCount(mask);
-                span = span.Slice(Vector256<byte>.Count);
+                ptr = ref Unsafe.Add(ref ptr, Vector256<byte>.Count);
             }
         }
 
         if (Vector128.IsHardwareAccelerated)
         {
             var black = Vector128.Create((byte)ModuleState.Module);
-            while (span.Length >= Vector128<byte>.Count)
+            while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref ptr, Vector128<byte>.Count), ref end))
             {
-                var vec = Vector128.Create(span.Slice(0, Vector128<byte>.Count));
+                var vec = Vector128.LoadUnsafe(ref ptr);
                 vec &= black;
                 var isBlack = Vector128.Equals(vec, black);
                 var mask = isBlack.ExtractMostSignificantBits();
                 result += BitOperations.PopCount(mask);
-                span = span.Slice(Vector128<byte>.Count);
+                ptr = ref Unsafe.Add(ref ptr, Vector128<byte>.Count);
             }
         }
 
-        for (int i = 0; i < span.Length; i++)
+        while (Unsafe.IsAddressLessThan(ref ptr, ref end))
         {
-            var module = span[i];
-            if (((ModuleState)module).HasFlag(ModuleState.Module))
+            if (((ModuleState)ptr).HasFlag(ModuleState.Module))
                 result++;
+
+            ptr = ref Unsafe.Add(ref ptr, 1);
         }
 
         return result;
@@ -863,6 +869,7 @@ public partial class QrCode
     private static int FinderPenaltyCountPatterns(ref int runHistory, nuint position)
     {
         ref var hstPtr = ref runHistory;
+        var n6 = Unsafe.Add(ref hstPtr, position - 7);
         var n0 = Unsafe.Add(ref hstPtr, position - 1);
         var n = Unsafe.Add(ref hstPtr, position - 2);
 
@@ -884,7 +891,6 @@ public partial class QrCode
             }
         }
 
-        var n6 = Unsafe.Add(ref hstPtr, position - 7);
         return (core && n6 >= n && n0 >= n * 4 ? 1 : 0)
             + (core && n0 >= n && n6 >= n * 4 ? 1 : 0);
     }
