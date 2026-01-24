@@ -417,33 +417,50 @@ public partial class QrCode
     {
         var modules = _modules;
         ref var ptr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetArrayDataReference(modules));
-        var span = MemoryMarshal.CreateSpan(ref ptr, modules.Length);
 
-        if (msk == -1)
+        if (msk > -1)
         {
-            int minPenalty = int.MaxValue;
-            var size = _size;
-            var modulesCopy = ArrayPool<byte>.Shared.Rent(size * size);
-            ref var copyPtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetReference(modulesCopy));
-            var modulesCopySpan = MemoryMarshal.CreateSpan(ref copyPtr, modulesCopy.Length);
-            for (int i = 0; i < 8; i++)
-            {
-                span.CopyTo(modulesCopySpan);
-                ApplyMask(i, ref copyPtr);
-                DrawFormatBits(i, ref copyPtr);
-                var penalty = GetPenaltyScore(ref copyPtr, minPenalty);
-                if (penalty != -1)
-                {
-                    msk = i;
-                    minPenalty = penalty;
-                }
-            }
-
-            ArrayPool<byte>.Shared.Return(modulesCopy);
+            ApplyMask(msk, ref ptr);
+            DrawFormatBits(msk, ref ptr);
+            return msk;
         }
 
-        ApplyMask(msk, ref ptr);
-        DrawFormatBits(msk, ref ptr);
+        var span = MemoryMarshal.CreateSpan(ref ptr, modules.Length);
+        int minPenalty = int.MaxValue;
+        byte[] modulesCopy = null, appliedMask = null;
+
+        for (int i = 0; i < 8; i++)
+        {
+            modulesCopy ??= ArrayPool<byte>.Shared.Rent(modules.Length);
+            ref var copyPtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetReference(modulesCopy));
+            var modulesCopySpan = MemoryMarshal.CreateSpan(ref copyPtr, modulesCopy.Length);
+
+            span.CopyTo(modulesCopySpan);
+            ApplyMask(i, ref copyPtr);
+            DrawFormatBits(i, ref copyPtr);
+            var penalty = GetPenaltyScore(ref copyPtr, minPenalty);
+            if (penalty != -1)
+            {
+                msk = i;
+                minPenalty = penalty;
+                if (appliedMask != null)
+                    ArrayPool<byte>.Shared.Return(appliedMask);
+                appliedMask = modulesCopy;
+                modulesCopy = null;
+            }
+        }
+
+        if (appliedMask != null)
+        {
+            ref var appliedPtr = ref Unsafe.As<byte, ModuleState>(ref MemoryMarshal.GetReference(appliedMask));
+            var appliedSpan = MemoryMarshal.CreateSpan(ref appliedPtr, modules.Length);
+            appliedSpan.CopyTo(span);
+            ArrayPool<byte>.Shared.Return(appliedMask);
+        }
+
+        if (modulesCopy != null)
+            ArrayPool<byte>.Shared.Return(modulesCopy);
+
         return msk;
     }
 
@@ -624,7 +641,6 @@ public partial class QrCode
             throw new ArgumentException("Mask value out of range");
 
         var size = _size;
-        var modules = _modules;
 
         if (msk == 0)
         {
