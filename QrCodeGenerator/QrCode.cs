@@ -789,7 +789,10 @@ public partial class QrCode
                 return -1;
         }
 
-        var black = CountModules();
+        if (result >= currentScore)
+            return -1;
+
+        var black = CountModules(ref ptr);
 
         var total = size * size;
         var k = ((black * 20 - total * 10).SimpleAbs() + total - 1) / total - 1;
@@ -823,11 +826,11 @@ public partial class QrCode
         return result;
     }
 
-    private int CountModules()
+    private int CountModules(ref ModuleState modulesPtr)
     {
-        var modules = _modules;
-        ref var ptr = ref MemoryMarshal.GetArrayDataReference(modules);
-        ref var end = ref Unsafe.Add(ref ptr, modules.Length);
+        var size = _size;
+        ref var ptr = ref Unsafe.As<ModuleState, byte>(ref modulesPtr);
+        ref var end = ref Unsafe.Add(ref ptr, size * size);
         var result = 0;
 
         if (Vector256.IsHardwareAccelerated)
