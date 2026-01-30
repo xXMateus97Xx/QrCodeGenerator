@@ -420,7 +420,7 @@ public partial class QrCode
 
         if (msk > -1)
         {
-            ApplyMask(msk, ref ptr);
+            ApplyMaskFast(msk, ref ptr);
             DrawFormatBits(msk, ref ptr);
             return msk;
         }
@@ -436,7 +436,7 @@ public partial class QrCode
             var modulesCopySpan = MemoryMarshal.CreateSpan(ref copyPtr, modulesCopy.Length);
 
             span.CopyTo(modulesCopySpan);
-            ApplyMask(i, ref copyPtr);
+            ApplyMaskFast(i, ref copyPtr);
             DrawFormatBits(i, ref copyPtr);
             var penalty = GetPenaltyScore(ref copyPtr, minPenalty);
             if (penalty != -1)
@@ -733,6 +733,241 @@ public partial class QrCode
         }
     }
 
+    private void ApplyMaskFast(int msk, ref ModuleState ptr)
+    {
+        if (msk < 0 || msk > 7)
+            throw new ArgumentException("Mask value out of range");
+
+        var size = _size;
+        var sizeShort = (short)size;
+        ref var current = ref Unsafe.As<ModuleState, byte>(ref ptr);
+        ref var end = ref Unsafe.Add(ref current, size * size);
+        short pos = 0;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Vector256<short> idx;
+#if NET9_0_OR_GREATER
+            idx = Vector256<short>.Indices;
+#else
+            idx = Vector256.Create(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+#endif
+
+            var isFunction = Vector256.Create((short)ModuleState.IsFunction);
+            var module = Vector256.Create((short)ModuleState.Module);
+            while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref current, Vector256<byte>.Count), ref end))
+            {
+                var posV = Vector256.Create(pos) + idx;
+                var y = posV / sizeShort;
+                var x = Utils.Mod(posV, sizeShort);
+                posV = Vector256.Create((short)(pos + (short)Vector256<short>.Count)) + idx;
+                var y2 = posV / sizeShort;
+                var x2 = Utils.Mod(posV, sizeShort);
+
+                var (modules, modules2) = Vector256.Widen(Vector256.LoadUnsafe(ref current).AsSByte());
+
+                var apply = ~Vector256.Equals(modules & isFunction, isFunction);
+                var apply2 = ~Vector256.Equals(modules2 & isFunction, isFunction);
+                apply = CalculateMask(msk, x, y, apply) ^ Vector256.Equals(modules & module, module);
+                apply2 = CalculateMask(msk, x2, y2, apply2) ^ Vector256.Equals(modules2 & module, module);
+
+                var toAdd = Vector256.ConditionalSelect(apply, Vector256<short>.Zero, module);
+                var toRemove = Vector256.ConditionalSelect(apply, ~module, Vector256<short>.AllBitsSet);
+
+                modules |= toAdd;
+                modules &= toRemove;
+
+                toAdd = Vector256.ConditionalSelect(apply2, Vector256<short>.Zero, module);
+                toRemove = Vector256.ConditionalSelect(apply2, ~module, Vector256<short>.AllBitsSet);
+
+                modules2 |= toAdd;
+                modules2 &= toRemove;
+
+                var b = Vector256.Narrow(modules, modules2).AsByte();
+                b.StoreUnsafe(ref current);
+
+                var mask = apply.ExtractMostSignificantBits();
+                ApplyReverseMask(ref ptr, x, y, mask);
+                mask = apply2.ExtractMostSignificantBits();
+                ApplyReverseMask(ref ptr, x2, y2, mask);
+
+                current = ref Unsafe.Add(ref current, Vector256<byte>.Count);
+                pos += (short)Vector256<byte>.Count;
+            }
+        }
+
+        if (Vector128.IsHardwareAccelerated && Unsafe.IsAddressLessThan(ref Unsafe.Add(ref current, Vector128<byte>.Count), ref end))
+        {
+            Vector128<short> idx;
+#if NET9_0_OR_GREATER
+            idx = Vector128<short>.Indices;
+#else
+            idx = Vector128.Create(0, 1, 2, 3, 4, 5, 6, 7);
+#endif
+
+            var isFunction = Vector128.Create((short)ModuleState.IsFunction);
+            var module = Vector128.Create((short)ModuleState.Module);
+            while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref current, Vector128<byte>.Count), ref end))
+            {
+                var posV = Vector128.Create(pos) + idx;
+                var y = posV / sizeShort;
+                var x = Utils.Mod(posV, sizeShort);
+                posV = Vector128.Create((short)(pos + (short)Vector128<short>.Count)) + idx;
+                var y2 = posV / sizeShort;
+                var x2 = Utils.Mod(posV, sizeShort);
+
+                var (modules, modules2) = Vector128.Widen(Vector128.LoadUnsafe(ref current).AsSByte());
+
+                var apply = ~Vector128.Equals(modules & isFunction, isFunction);
+                var apply2 = ~Vector128.Equals(modules2 & isFunction, isFunction);
+                apply = CalculateMask(msk, x, y, apply);
+                apply2 = CalculateMask(msk, x2, y2, apply2);
+
+                apply ^= Vector128.Equals(modules & module, module);
+                apply2 ^= Vector128.Equals(modules2 & module, module);
+
+                var toAdd = Vector128.ConditionalSelect(apply, Vector128<short>.Zero, module);
+                var toRemove = Vector128.ConditionalSelect(apply, ~module, Vector128<short>.AllBitsSet);
+
+                modules |= toAdd;
+                modules &= toRemove;
+
+                toAdd = Vector128.ConditionalSelect(apply2, Vector128<short>.Zero, module);
+                toRemove = Vector128.ConditionalSelect(apply2, ~module, Vector128<short>.AllBitsSet);
+
+                modules2 |= toAdd;
+                modules2 &= toRemove;
+
+                var b = Vector128.Narrow(modules, modules2).AsByte();
+                b.StoreUnsafe(ref current);
+
+                var mask = apply.ExtractMostSignificantBits();
+                ApplyReverseMask(ref ptr, x, y, mask);
+                mask = apply2.ExtractMostSignificantBits();
+                ApplyReverseMask(ref ptr, x2, y2, mask);
+
+                current = ref Unsafe.Add(ref current, Vector128<byte>.Count);
+                pos += (short)Vector128<byte>.Count;
+            }
+        }
+
+        while (Unsafe.IsAddressLessThan(ref current, ref end))
+        {
+            var y = pos / size;
+            var x = pos % size;
+            ref var currentModule = ref Unsafe.As<byte, ModuleState>(ref current);
+            bool apply;
+            apply = CalculateMask(msk, x, y, currentModule);
+
+            SetMask(x, y, apply, ref ptr, size);
+
+            current = ref Unsafe.Add(ref current, 1);
+            pos++;
+        }
+    }
+
+    private void ApplyReverseMask(ref ModuleState ptr, Vector256<short> x, Vector256<short> y, uint mask)
+    {
+        var size = _size;
+        for (var i = 0; i < Vector256<short>.Count; i++)
+        {
+            int xs = x[i],
+                ys = y[i];
+            var isSet = GetBit(mask, i);
+            ref var p = ref Unsafe.Add(ref ptr, xs * size + ys);
+            if (isSet)
+                p |= ModuleState.Reversed;
+            else
+                p &= ~ModuleState.Reversed;
+        }
+    }
+
+    private void ApplyReverseMask(ref ModuleState ptr, Vector128<short> x, Vector128<short> y, uint mask)
+    {
+        var size = _size;
+        for (var i = 0; i < Vector128<short>.Count; i++)
+        {
+            int xs = x[i],
+                ys = y[i];
+            var isSet = GetBit(mask, i);
+            ref var p = ref Unsafe.Add(ref ptr, xs * size + ys);
+            if (isSet)
+                p |= ModuleState.Reversed;
+            else
+                p &= ~ModuleState.Reversed;
+        }
+    }
+
+    private static bool CalculateMask(int msk, int x, int y, ModuleState currentModule)
+    {
+        bool apply;
+        if (msk == 0)
+            apply = (x + y).IsEven() && !currentModule.HasFlag(ModuleState.IsFunction);
+        else if (msk == 1)
+            apply = y.IsEven() && !currentModule.HasFlag(ModuleState.IsFunction);
+        else if (msk == 2)
+            apply = x % 3 == 0 && !currentModule.HasFlag(ModuleState.IsFunction);
+        else if (msk == 3)
+            apply = (x + y) % 3 == 0 && !currentModule.HasFlag(ModuleState.IsFunction);
+        else if (msk == 4)
+            apply = (x / 3 + y / 2).IsEven() && !currentModule.HasFlag(ModuleState.IsFunction);
+        else if (msk == 5)
+            apply = !currentModule.HasFlag(ModuleState.IsFunction) && ((x * y) & 1) + x * y % 3 == 0;
+        else if (msk == 6)
+            apply = !currentModule.HasFlag(ModuleState.IsFunction) && ((x * y & 1) + x * y % 3).IsEven();
+        else
+            apply = !currentModule.HasFlag(ModuleState.IsFunction) && (((x + y) & 1) + x * y % 3).IsEven();
+        return apply;
+    }
+
+    private static Vector128<short> CalculateMask(int msk, Vector128<short> x, Vector128<short> y, Vector128<short> apply)
+    {
+        var zero = Vector128<short>.Zero;
+        var one = Vector128<short>.One;
+        Vector128<short> r;
+        if (msk == 0)
+            r = Vector128.Equals((x + y) & one, zero);
+        else if (msk == 1)
+            r = Vector128.Equals(y & one, zero);
+        else if (msk == 2)
+            r = Vector128.Equals(Utils.Mod(x, 3), zero);
+        else if (msk == 3)
+            r = Vector128.Equals(Utils.Mod(x + y, 3), zero);
+        else if (msk == 4)
+            r = Vector128.Equals((x / 3 + y / 2) & one, zero);
+        else if (msk == 5)
+            r = Vector128.Equals(((x * y) & one) + Utils.Mod(x * y, 3), zero);
+        else if (msk == 6)
+            r = Vector128.Equals(((x * y & one) + Utils.Mod(x * y, 3)) & one, zero);
+        else
+            r = Vector128.Equals((((x + y) & one) + Utils.Mod(x * y, 3)) & one, zero);
+        return apply & r;
+    }
+
+    private static Vector256<short> CalculateMask(int msk, Vector256<short> x, Vector256<short> y, Vector256<short> apply)
+    {
+        var zero = Vector256<short>.Zero;
+        var one = Vector256<short>.One;
+        Vector256<short> r;
+        if (msk == 0)
+            r = Vector256.Equals((x + y) & one, zero);
+        else if (msk == 1)
+            r = Vector256.Equals(y & one, zero);
+        else if (msk == 2)
+            r = Vector256.Equals(Utils.Mod(x, 3), zero);
+        else if (msk == 3)
+            r = Vector256.Equals(Utils.Mod(x + y, 3), zero);
+        else if (msk == 4)
+            r = Vector256.Equals((x / 3 + y / 2) & one, zero);
+        else if (msk == 5)
+            r = Vector256.Equals(((x * y) & one) + Utils.Mod(x * y, 3), zero);
+        else if (msk == 6)
+            r = Vector256.Equals(((x * y & one) + Utils.Mod(x * y, 3)) & one, zero);
+        else
+            r = Vector256.Equals((((x + y) & one) + Utils.Mod(x * y, 3)) & one, zero);
+        return apply & r;
+    }
+
     private static void SetMask(int x, int y, bool apply, ref ModuleState ptr, int size)
     {
         ref var p = ref Unsafe.Add(ref ptr, y * size + x);
@@ -889,27 +1124,27 @@ public partial class QrCode
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FinderPenaltyCountPatterns(ref int runHistory, nuint position)
     {
-        ref var hstPtr = ref runHistory;
-        var n6 = Unsafe.Add(ref hstPtr, position - 7);
-        var n0 = Unsafe.Add(ref hstPtr, position - 1);
-        var n = Unsafe.Add(ref hstPtr, position - 2);
+        var n = Unsafe.Add(ref runHistory, position - 2);
 
         bool core = n > 0;
-        if (core)
+        if (!core)
+            return 0;
+
+        var n6 = Unsafe.Add(ref runHistory, position - 7);
+        var n0 = Unsafe.Add(ref runHistory, position - 1);
+
+        if (Vector128.IsHardwareAccelerated)
         {
-            if (Vector128.IsHardwareAccelerated)
-            {
-                var hstVec = Vector128.LoadUnsafe(ref hstPtr, position - 6);
-                var nVec = Vector128.Create(n) * Vector128.Create(1, 1, 3, 1);
-                core = hstVec == nVec;
-            }
-            else
-            {
-                core = Unsafe.Add(ref hstPtr, position - 3) == n &&
-                Unsafe.Add(ref hstPtr, position - 4) == n * 3 &&
-                Unsafe.Add(ref hstPtr, position - 5) == n &&
-                Unsafe.Add(ref hstPtr, position - 6) == n;
-            }
+            var hstVec = Vector128.LoadUnsafe(ref runHistory, position - 6);
+            var nVec = Vector128.Create(n) * Vector128.Create(1, 1, 3, 1);
+            core = hstVec == nVec;
+        }
+        else
+        {
+            core = Unsafe.Add(ref runHistory, position - 3) == n &&
+            Unsafe.Add(ref runHistory, position - 4) == n * 3 &&
+            Unsafe.Add(ref runHistory, position - 5) == n &&
+            Unsafe.Add(ref runHistory, position - 6) == n;
         }
 
         return (core && n6 >= n && n0 >= n * 4 ? 1 : 0)
