@@ -757,19 +757,14 @@ public partial class QrCode
             var module = Vector256.Create((short)ModuleState.Module);
             while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref current, Vector256<byte>.Count), ref end))
             {
+                var (modules, modules2) = Vector256.Widen(Vector256.LoadUnsafe(ref current).AsSByte());
+
                 var posV = Vector256.Create(pos) + idx;
                 var y = posV / sizeShort;
                 var x = Utils.Mod(posV, sizeShort);
-                posV = Vector256.Create((short)(pos + (short)Vector256<short>.Count)) + idx;
-                var y2 = posV / sizeShort;
-                var x2 = Utils.Mod(posV, sizeShort);
-
-                var (modules, modules2) = Vector256.Widen(Vector256.LoadUnsafe(ref current).AsSByte());
 
                 var apply = ~Vector256.Equals(modules & isFunction, isFunction);
-                var apply2 = ~Vector256.Equals(modules2 & isFunction, isFunction);
                 apply = CalculateMask(msk, x, y, apply) ^ Vector256.Equals(modules & module, module);
-                apply2 = CalculateMask(msk, x2, y2, apply2) ^ Vector256.Equals(modules2 & module, module);
 
                 var toAdd = Vector256.ConditionalSelect(apply, Vector256<short>.Zero, module);
                 var toRemove = Vector256.ConditionalSelect(apply, ~module, Vector256<short>.AllBitsSet);
@@ -777,8 +772,17 @@ public partial class QrCode
                 modules |= toAdd;
                 modules &= toRemove;
 
-                toAdd = Vector256.ConditionalSelect(apply2, Vector256<short>.Zero, module);
-                toRemove = Vector256.ConditionalSelect(apply2, ~module, Vector256<short>.AllBitsSet);
+                var mask = apply.ExtractMostSignificantBits();
+
+                posV = Vector256.Create((short)(pos + (short)Vector256<short>.Count)) + idx;
+                var y2 = posV / sizeShort;
+                var x2 = Utils.Mod(posV, sizeShort);
+
+                apply = ~Vector256.Equals(modules2 & isFunction, isFunction);
+                apply = CalculateMask(msk, x2, y2, apply) ^ Vector256.Equals(modules2 & module, module);
+
+                toAdd = Vector256.ConditionalSelect(apply, Vector256<short>.Zero, module);
+                toRemove = Vector256.ConditionalSelect(apply, ~module, Vector256<short>.AllBitsSet);
 
                 modules2 |= toAdd;
                 modules2 &= toRemove;
@@ -786,9 +790,8 @@ public partial class QrCode
                 var b = Vector256.Narrow(modules, modules2).AsByte();
                 b.StoreUnsafe(ref current);
 
-                var mask = apply.ExtractMostSignificantBits();
                 ApplyReverseMask(ref ptr, x, y, mask);
-                mask = apply2.ExtractMostSignificantBits();
+                mask = apply.ExtractMostSignificantBits();
                 ApplyReverseMask(ref ptr, x2, y2, mask);
 
                 current = ref Unsafe.Add(ref current, Vector256<byte>.Count);
@@ -809,22 +812,16 @@ public partial class QrCode
             var module = Vector128.Create((short)ModuleState.Module);
             while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref current, Vector128<byte>.Count), ref end))
             {
+                var (modules, modules2) = Vector128.Widen(Vector128.LoadUnsafe(ref current).AsSByte());
+
                 var posV = Vector128.Create(pos) + idx;
                 var y = posV / sizeShort;
                 var x = Utils.Mod(posV, sizeShort);
-                posV = Vector128.Create((short)(pos + (short)Vector128<short>.Count)) + idx;
-                var y2 = posV / sizeShort;
-                var x2 = Utils.Mod(posV, sizeShort);
-
-                var (modules, modules2) = Vector128.Widen(Vector128.LoadUnsafe(ref current).AsSByte());
 
                 var apply = ~Vector128.Equals(modules & isFunction, isFunction);
-                var apply2 = ~Vector128.Equals(modules2 & isFunction, isFunction);
-                apply = CalculateMask(msk, x, y, apply);
-                apply2 = CalculateMask(msk, x2, y2, apply2);
 
+                apply = CalculateMask(msk, x, y, apply);
                 apply ^= Vector128.Equals(modules & module, module);
-                apply2 ^= Vector128.Equals(modules2 & module, module);
 
                 var toAdd = Vector128.ConditionalSelect(apply, Vector128<short>.Zero, module);
                 var toRemove = Vector128.ConditionalSelect(apply, ~module, Vector128<short>.AllBitsSet);
@@ -832,8 +829,18 @@ public partial class QrCode
                 modules |= toAdd;
                 modules &= toRemove;
 
-                toAdd = Vector128.ConditionalSelect(apply2, Vector128<short>.Zero, module);
-                toRemove = Vector128.ConditionalSelect(apply2, ~module, Vector128<short>.AllBitsSet);
+                var mask = apply.ExtractMostSignificantBits();
+
+                posV = Vector128.Create((short)(pos + (short)Vector128<short>.Count)) + idx;
+                var y2 = posV / sizeShort;
+                var x2 = Utils.Mod(posV, sizeShort);
+
+                apply = ~Vector128.Equals(modules2 & isFunction, isFunction);
+                apply = CalculateMask(msk, x2, y2, apply);
+                apply ^= Vector128.Equals(modules2 & module, module);
+
+                toAdd = Vector128.ConditionalSelect(apply, Vector128<short>.Zero, module);
+                toRemove = Vector128.ConditionalSelect(apply, ~module, Vector128<short>.AllBitsSet);
 
                 modules2 |= toAdd;
                 modules2 &= toRemove;
@@ -841,9 +848,8 @@ public partial class QrCode
                 var b = Vector128.Narrow(modules, modules2).AsByte();
                 b.StoreUnsafe(ref current);
 
-                var mask = apply.ExtractMostSignificantBits();
                 ApplyReverseMask(ref ptr, x, y, mask);
-                mask = apply2.ExtractMostSignificantBits();
+                mask = apply.ExtractMostSignificantBits();
                 ApplyReverseMask(ref ptr, x2, y2, mask);
 
                 current = ref Unsafe.Add(ref current, Vector128<byte>.Count);
