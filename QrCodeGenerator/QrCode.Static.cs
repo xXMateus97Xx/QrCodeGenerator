@@ -28,6 +28,8 @@ public partial class QrCode
 
     private static readonly int[] DRAW_VERSION_REM = InitializeDrawVersionRem();
 
+    private static readonly float[] VERSION_INVERSION = InitializeVersionInversions();
+
     private static ReadOnlySpan<byte> SVG_UTF8_HEADER => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"u8;
     private static ReadOnlySpan<byte> SVG_UTF8_HEADER2 => "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n"u8;
     private static ReadOnlySpan<byte> SVG_UTF8_SVG => "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 "u8;
@@ -104,6 +106,23 @@ public partial class QrCode
         }
 
         return arr;
+    }
+
+    private static float[] InitializeVersionInversions()
+    {
+        var arr = new float[MAX_VERSION + 1];
+
+        for (var i = MIN_VERSION; i <= MAX_VERSION; i++)
+            arr[i] = 1 / (float)(i * 4 + 17);
+
+        return arr;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float GetVersionMultiplier(int version)
+    {
+        ref var ptr = ref MemoryMarshal.GetReference(VERSION_INVERSION);
+        return Unsafe.Add(ref ptr, version);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
