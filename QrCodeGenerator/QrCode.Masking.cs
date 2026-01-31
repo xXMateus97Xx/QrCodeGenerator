@@ -319,12 +319,13 @@ public partial class QrCode
         else
         {
             var m = x * y;
+            var modM = Utils.Mod3(m);
             if (msk == 5)
-                r = (m & one) + Utils.Mod3(m);
+                r = (m & one) + modM;
             else if (msk == 6)
-                r = ((x * y & one) + Utils.Mod3(m)) & one;
+                r = ((x * y & one) + modM) & one;
             else
-                r = (((x + y) & one) + Utils.Mod3(m)) & one;
+                r = (((x + y) & one) + modM) & one;
         }
         return apply & Vector128.Equals(r, Vector128<short>.Zero);
     }
@@ -346,12 +347,13 @@ public partial class QrCode
         else
         {
             var m = x * y;
+            var modM = Utils.Mod3(m);
             if (msk == 5)
-                r = (m & one) + Utils.Mod3(m);
+                r = (m & one) + modM;
             else if (msk == 6)
-                r = ((x * y & one) + Utils.Mod3(m)) & one;
+                r = ((x * y & one) + modM) & one;
             else
-                r = (((x + y) & one) + Utils.Mod3(m)) & one;
+                r = (((x + y) & one) + modM) & one;
         }
         return apply & Vector256.Equals(r, Vector256<short>.Zero);
     }
