@@ -10,9 +10,6 @@ public partial class QrCode
 {
     private void ApplyMask(int msk, ref ModuleState ptr)
     {
-        if (msk < 0 || msk > 7)
-            throw new ArgumentException("Mask value out of range");
-
         var size = _size;
 
         if (msk == 0)
@@ -110,6 +107,12 @@ public partial class QrCode
     {
         if (msk < 0 || msk > 7)
             throw new ArgumentException("Mask value out of range");
+
+        if (!Vector256.IsHardwareAccelerated && !Vector128.IsHardwareAccelerated)
+        {
+            ApplyMask(msk, ref ptr);
+            return;
+        }
 
         var size = _size;
         var version = (size - 17) / 4;
@@ -237,9 +240,8 @@ public partial class QrCode
         {
             var y = pos / size;
             var x = pos % size;
-            ref var currentModule = ref Unsafe.As<byte, ModuleState>(ref current);
-            bool apply;
-            apply = CalculateMask(msk, x, y, currentModule);
+            var currentModule = Unsafe.As<byte, ModuleState>(ref current);
+            var apply = CalculateMask(msk, x, y, currentModule);
 
             SetMask(x, y, apply, ref ptr, size);
 
@@ -248,6 +250,7 @@ public partial class QrCode
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ApplyReverseMask(ref ModuleState ptr, Vector256<short> x, Vector256<short> y, uint mask)
     {
         var size = _size;
@@ -264,6 +267,7 @@ public partial class QrCode
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ApplyReverseMask(ref ModuleState ptr, Vector128<short> x, Vector128<short> y, uint mask)
     {
         var size = _size;
@@ -302,6 +306,7 @@ public partial class QrCode
         return apply;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector128<short> CalculateMask(int msk, Vector128<short> x, Vector128<short> y, Vector128<short> apply)
     {
         var one = Vector128<short>.One;
@@ -330,6 +335,7 @@ public partial class QrCode
         return apply & Vector128.Equals(r, Vector128<short>.Zero);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<short> CalculateMask(int msk, Vector256<short> x, Vector256<short> y, Vector256<short> apply)
     {
         var one = Vector256<short>.One;
