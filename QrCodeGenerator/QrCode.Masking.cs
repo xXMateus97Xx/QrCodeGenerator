@@ -147,14 +147,6 @@ public partial class QrCode
                 var apply = Vector256.Equals(modules & isFunction, Vector256<short>.Zero);
                 apply = CalculateMask(msk, x, y, apply);
 
-                var toAdd = Vector256.ConditionalSelect(apply, Vector256<short>.Zero, module);
-                var toRemove = Vector256.ConditionalSelect(apply, moduleReverse, Vector256<short>.AllBitsSet);
-
-                modules |= toAdd;
-                modules &= toRemove;
-
-                var mask = apply.ExtractMostSignificantBits();
-
                 posV = Vector256.Create((short)(pos + (short)Vector256<short>.Count)) + idx;
                 var y2 = Utils.Div(posV, versionMultipler);
                 var x2 = Utils.Mod(posV, sizeShort, versionMultipler);
@@ -205,9 +197,7 @@ public partial class QrCode
                 var x = Utils.Mod(posV, sizeShort, versionMultipler);
 
                 var apply = Vector128.Equals(modules & isFunction, Vector128<short>.Zero);
-
                 apply = CalculateMask(msk, x, y, apply);
-                apply ^= Vector128.Equals(modules & module, module);
 
                 posV = Vector128.Create((short)(pos + (short)Vector128<short>.Count)) + idx;
                 var y2 = Utils.Div(posV, versionMultipler);
