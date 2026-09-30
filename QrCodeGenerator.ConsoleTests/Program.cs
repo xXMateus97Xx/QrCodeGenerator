@@ -135,6 +135,14 @@ class Program
         WritePng(qr.ToImage(10, 3), "unicode-mask5-QR.png");
         qr = QrCode.EncodeSegments(segs, Ecc.Medium, QrCode.MIN_VERSION, QrCode.MAX_VERSION, 7, true);  // Force mask 7
         WritePng(qr.ToImage(10, 3), "unicode-mask7-QR.png");
+
+        var text = "Hello, world!";
+        segs = QrSegment.MakeSegments(text);
+        for (int i = 0; i < 8; i++)
+        {
+            qr = QrCode.EncodeSegments(segs, Ecc.Low, QrCode.MIN_VERSION, QrCode.MAX_VERSION, i, true);  // Force all masks
+            WritePng(qr.ToImage(10, 3), $"hw-mask{i}-QR.png");
+        }
     }
 
     private static void WritePng(Image img, string filepath)

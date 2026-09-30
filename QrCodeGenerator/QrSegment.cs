@@ -181,7 +181,7 @@ public sealed class QrSegment
         if (idx < Vector256<ushort>.Count)
             return idx;
 
-        vec = Vector256.LoadUnsafe(ref Unsafe.Add(ref ptr, Vector256<ushort>.Count));
+        vec = Vector256.LoadUnsafe(ref ptr, (nuint)Vector256<ushort>.Count);
 
         result = Vector256.Equals(vec, charVec);
         mask = Vector256.ExtractMostSignificantBits(result);
@@ -190,7 +190,7 @@ public sealed class QrSegment
         if (idx < Vector256<ushort>.Count)
             return idx + Vector256<ushort>.Count;
 
-        vec = Vector256.LoadUnsafe(ref Unsafe.Add(ref ptr, ALPHANUMERIC_CHARSET.Length - Vector256<ushort>.Count));
+        vec = Vector256.LoadUnsafe(ref ptr, (nuint)(ALPHANUMERIC_CHARSET.Length - Vector256<ushort>.Count));
 
         result = Vector256.Equals(vec, charVec);
         mask = Vector256.ExtractMostSignificantBits(result);
