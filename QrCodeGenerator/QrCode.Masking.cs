@@ -374,51 +374,40 @@ public partial class QrCode
         var result = 0;
         var size = _size;
 
-        Span<ModuleState> modules = stackalloc ModuleState[MAX_VERSION * 4 + 17];
-        Span<ModuleState> modules2 = stackalloc ModuleState[MAX_VERSION * 4 + 17];
-        Span<ModuleState> reversed = stackalloc ModuleState[MAX_VERSION * 4 + 17];
-        Span<ModuleState> reversed2 = stackalloc ModuleState[MAX_VERSION * 4 + 17];
-        modules = modules.Slice(0, size);
-        modules2 = modules2.Slice(0, size);
-        reversed = reversed.Slice(0, size);
-        reversed2 = reversed2.Slice(0, size);
+        ReadOnlySpan<ModuleState> current = MemoryMarshal.CreateReadOnlySpan(ref ptr, size), next;
 
         var black = 0;
 
-        black += ExtractFlagsAndSumBlack(ref ptr, modules, reversed);
+        black += SumBlack(current);
         ptr = ref Unsafe.Add(ref ptr, size);
 
         for (int i = 1; i < size; i++)
         {
-            black += ExtractFlagsAndSumBlack(ref ptr, modules2, reversed2);
+            next = MemoryMarshal.CreateReadOnlySpan(ref ptr, size);
 
-            result += FindSequentialPatternFast(modules, ModuleState.Module);
-            result += FindBadPattern(modules, ModuleState.Module);
+            black += SumBlack(next);
 
-            result += FindSequentialPatternFast(reversed, ModuleState.Reversed);
-            result += FindBadPattern(reversed, ModuleState.Reversed);
+            result += FindBadPatternFast(current);
 
-            result += FindSquarePattern(modules, modules2);
+            result += FindSequentialPatternFast(current, ModuleState.Module);
+
+            result += FindSequentialPatternFast(current, ModuleState.Reversed);
+
+            result += FindSquarePattern(current, next);
 
             if (result >= currentScore)
                 return -1;
 
             ptr = ref Unsafe.Add(ref ptr, size);
 
-            var pivot = modules;
-            modules = modules2;
-            modules2 = pivot;
-
-            pivot = reversed;
-            reversed = reversed2;
-            reversed2 = pivot;
+            current = next;
         }
 
-        result += FindSequentialPatternFast(modules, ModuleState.Module);
-        result += FindBadPattern(modules, ModuleState.Module);
+        result += FindSequentialPatternFast(current, ModuleState.Module);
+        result += FindBadPatternFast(current);
 
-        result += FindSequentialPatternFast(reversed, ModuleState.Reversed);
-        result += FindBadPattern(reversed, ModuleState.Reversed);
+        result += FindSequentialPatternFast(current, ModuleState.Reversed);
+        result += FindBadPatternFast(current);
 
         var total = size * size;
 
@@ -446,7 +435,7 @@ public partial class QrCode
                 var vec1 = Vector256.LoadUnsafe(ref l1ptr);
                 var vec2 = Vector256.LoadUnsafe(ref l2ptr);
 
-                var eq = Vector256.Equals(vec1, mvec) & Vector256.Equals(vec2, mvec);
+                var eq = Vector256.Equals(vec1 & mvec, mvec) & Vector256.Equals(vec2 & mvec, mvec);
                 var mask = eq.ExtractMostSignificantBits();
 
                 while (mask > 1)
@@ -457,7 +446,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector256.Equals(vec1, lvec) & Vector256.Equals(vec2, lvec);
+                eq = Vector256.Equals(vec1 & lvec, lvec) & Vector256.Equals(vec2 & lvec, lvec);
                 mask = eq.ExtractMostSignificantBits();
 
                 while (mask > 1)
@@ -477,7 +466,7 @@ public partial class QrCode
                 var vec1 = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref l1end, Vector256<byte>.Count));
                 var vec2 = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref l2end, Vector256<byte>.Count));
 
-                var eq = Vector256.Equals(vec1, mvec) & Vector256.Equals(vec2, mvec);
+                var eq = Vector256.Equals(vec1 & mvec, mvec) & Vector256.Equals(vec2 & mvec, mvec);
                 var mask = eq.ExtractMostSignificantBits();
 
                 mask >>= Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref l1ptr, ref l1end);
@@ -490,7 +479,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector256.Equals(vec1, lvec) & Vector256.Equals(vec2, lvec);
+                eq = Vector256.Equals(vec1 & lvec, lvec) & Vector256.Equals(vec2 & lvec, lvec);
                 mask = eq.ExtractMostSignificantBits();
 
                 mask >>= Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref l1ptr, ref l1end);
@@ -513,7 +502,7 @@ public partial class QrCode
                 var vec1 = Vector128.LoadUnsafe(ref l1ptr);
                 var vec2 = Vector128.LoadUnsafe(ref l2ptr);
 
-                var eq = Vector128.Equals(vec1, mvec) & Vector128.Equals(vec2, mvec);
+                var eq = Vector128.Equals(vec1 & mvec, mvec) & Vector128.Equals(vec2 & mvec, mvec);
                 var mask = eq.ExtractMostSignificantBits();
 
                 while (mask > 1)
@@ -524,7 +513,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector128.Equals(vec1, lvec) & Vector128.Equals(vec2, lvec);
+                eq = Vector128.Equals(vec1 & lvec, lvec) & Vector128.Equals(vec2 & lvec, lvec);
                 mask = eq.ExtractMostSignificantBits();
 
                 while (mask > 1)
@@ -544,7 +533,7 @@ public partial class QrCode
                 var vec1 = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref l1end, Vector128<byte>.Count));
                 var vec2 = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref l2end, Vector128<byte>.Count));
 
-                var eq = Vector128.Equals(vec1, mvec) & Vector128.Equals(vec2, mvec);
+                var eq = Vector128.Equals(vec1 & mvec, mvec) & Vector128.Equals(vec2 & mvec, mvec);
                 var mask = eq.ExtractMostSignificantBits();
 
                 mask >>= Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref l1ptr, ref l1end);
@@ -557,7 +546,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector128.Equals(vec1, lvec) & Vector128.Equals(vec2, lvec);
+                eq = Vector128.Equals(vec1 & lvec, lvec) & Vector128.Equals(vec2 & lvec, lvec);
                 mask = eq.ExtractMostSignificantBits();
 
                 mask >>= Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref l1ptr, ref l1end);
@@ -610,7 +599,7 @@ public partial class QrCode
             {
                 var vec = Vector256.LoadUnsafe(ref ptr);
 
-                var eq = Vector256.Equals(vec, flagv);
+                var eq = Vector256.Equals(vec & flagv, flagv);
 
                 var mask = eq.ExtractMostSignificantBits();
 
@@ -662,7 +651,7 @@ public partial class QrCode
             {
                 var vec = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector256<byte>.Count));
 
-                var eq = Vector256.Equals(vec, flagv);
+                var eq = Vector256.Equals(vec & flagv, flagv);
 
                 var mask = eq.ExtractMostSignificantBits();
 
@@ -713,7 +702,7 @@ public partial class QrCode
             {
                 var vec = Vector128.LoadUnsafe(ref ptr);
 
-                var eq = Vector128.Equals(vec, flagv);
+                var eq = Vector128.Equals(vec & flagv, flagv);
 
                 var mask = eq.ExtractMostSignificantBits();
 
@@ -765,7 +754,7 @@ public partial class QrCode
             {
                 var vec = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector128<byte>.Count));
 
-                var eq = Vector128.Equals(vec, flagv);
+                var eq = Vector128.Equals(vec & flagv, flagv);
 
                 var mask = eq.ExtractMostSignificantBits();
 
@@ -860,137 +849,216 @@ public partial class QrCode
         return result;
     }
 
-    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FindBadPattern(ReadOnlySpan<ModuleState> modules, ModuleState dark)
+    private static int FindBadPatternFast(ReadOnlySpan<ModuleState> modules)
     {
-        var result = 0;
-        var idx = 0;
+        // Each line is converted into three bitmasks (bit i = module i): dark Module, dark Reversed and light.
+        // Every vector is compared only once against each state, then the pattern 1011101 is matched in all
+        // positions at once by and-ing shifted copies of the bitmasks, so no per-offset comparison is needed.
+        // Layout of each bitmask: [padding, word0, word1, word2, padding, padding] so shifts never go out of bounds.
+        const int words = (MAX_VERSION * 4 + 17 + 63) >> 6;
+        const int paddedWords = words + 3;
+        const ModuleState flags = ModuleState.Module | ModuleState.Reversed;
 
-        const ModuleState light = ModuleState.None;
-        ReadOnlySpan<ModuleState> pattern = dark == ModuleState.Module ?
-            [ModuleState.Module, light, ModuleState.Module, ModuleState.Module, ModuleState.Module, light, ModuleState.Module] :
-            [ModuleState.Reversed, light, ModuleState.Reversed, ModuleState.Reversed, ModuleState.Reversed, light, ModuleState.Reversed];
-        ReadOnlySpan<ModuleState> lightPattern = [light, light, light, light];
+        Span<ulong> bits = stackalloc ulong[paddedWords * 3];
+        ref var modulesBits = ref MemoryMarshal.GetReference(bits);
+        ref var reversedBits = ref Unsafe.Add(ref modulesBits, paddedWords);
+        ref var lightBits = ref Unsafe.Add(ref reversedBits, paddedWords);
 
-        while (idx + pattern.Length <= modules.Length)
+        ref var start = ref Unsafe.As<ModuleState, byte>(ref MemoryMarshal.GetReference(modules));
+        ref var ptr = ref start;
+        ref var end = ref Unsafe.Add(ref ptr, modules.Length);
+
+        if (Vector256.IsHardwareAccelerated && modules.Length >= Vector256<byte>.Count)
         {
-            var length = modules.Slice(idx).CommonPrefixLength(pattern);
-            if (length == pattern.Length)
+            var flagsv = Vector256.Create((byte)flags);
+            var module = Vector256.Create((byte)ModuleState.Module);
+            var reversed = Vector256.Create((byte)ModuleState.Reversed);
+
+            while (!Unsafe.IsAddressGreaterThan(ref Unsafe.Add(ref ptr, Vector256<byte>.Count), ref end))
             {
-                var nextStep = 6;
-                if (idx + pattern.Length + lightPattern.Length < modules.Length)
-                {
-                    var pLength = modules.Slice(idx + pattern.Length).CommonPrefixLength(lightPattern);
+                var vec = Vector256.LoadUnsafe(ref ptr) & flagsv;
+                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
 
-                    if (pLength == lightPattern.Length)
-                    {
-                        result += PENALTY_N3;
-                        nextStep = pattern.Length + pattern.Length;
-                    }
-                }
+                SetBadPatternBits(ref modulesBits, bit, Vector256.Equals(vec, module).ExtractMostSignificantBits());
+                SetBadPatternBits(ref reversedBits, bit, Vector256.Equals(vec, reversed).ExtractMostSignificantBits());
+                SetBadPatternBits(ref lightBits, bit, Vector256.Equals(vec, Vector256<byte>.Zero).ExtractMostSignificantBits());
 
-                if (idx - lightPattern.Length >= 0)
-                {
-                    var pLength = modules.Slice(idx - lightPattern.Length).CommonPrefixLength(lightPattern);
-
-                    if (pLength == lightPattern.Length)
-                        result += PENALTY_N3;
-                }
-
-                idx += nextStep;
+                ptr = ref Unsafe.Add(ref ptr, Vector256<byte>.Count);
             }
-            else
+
+            if (Unsafe.IsAddressLessThan(ref ptr, ref end))
             {
-                idx += length switch
-                {
-                    2 or 3 or 4 or 6 => length + 1,
-                    1 or 5 => length,
-                    _ => 1,
-                };
+                var vec = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector256<byte>.Count)) & flagsv;
+                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
+                var shift = Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end);
+
+                SetBadPatternBits(ref modulesBits, bit, Vector256.Equals(vec, module).ExtractMostSignificantBits() >> shift);
+                SetBadPatternBits(ref reversedBits, bit, Vector256.Equals(vec, reversed).ExtractMostSignificantBits() >> shift);
+                SetBadPatternBits(ref lightBits, bit, Vector256.Equals(vec, Vector256<byte>.Zero).ExtractMostSignificantBits() >> shift);
+
+                ptr = ref end;
             }
+        }
+        else if (Vector128.IsHardwareAccelerated && modules.Length >= Vector128<byte>.Count)
+        {
+            var flagsv = Vector128.Create((byte)flags);
+            var module = Vector128.Create((byte)ModuleState.Module);
+            var reversed = Vector128.Create((byte)ModuleState.Reversed);
+
+            while (!Unsafe.IsAddressGreaterThan(ref Unsafe.Add(ref ptr, Vector128<byte>.Count), ref end))
+            {
+                var vec = Vector128.LoadUnsafe(ref ptr) & flagsv;
+                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
+
+                SetBadPatternBits(ref modulesBits, bit, Vector128.Equals(vec, module).ExtractMostSignificantBits());
+                SetBadPatternBits(ref reversedBits, bit, Vector128.Equals(vec, reversed).ExtractMostSignificantBits());
+                SetBadPatternBits(ref lightBits, bit, Vector128.Equals(vec, Vector128<byte>.Zero).ExtractMostSignificantBits());
+
+                ptr = ref Unsafe.Add(ref ptr, Vector128<byte>.Count);
+            }
+
+            if (Unsafe.IsAddressLessThan(ref ptr, ref end))
+            {
+                var vec = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector128<byte>.Count)) & flagsv;
+                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
+                var shift = Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end);
+
+                SetBadPatternBits(ref modulesBits, bit, Vector128.Equals(vec, module).ExtractMostSignificantBits() >> shift);
+                SetBadPatternBits(ref reversedBits, bit, Vector128.Equals(vec, reversed).ExtractMostSignificantBits() >> shift);
+                SetBadPatternBits(ref lightBits, bit, Vector128.Equals(vec, Vector128<byte>.Zero).ExtractMostSignificantBits() >> shift);
+
+                ptr = ref end;
+            }
+        }
+
+        while (Unsafe.IsAddressLessThan(ref ptr, ref end))
+        {
+            var state = (ModuleState)ptr & flags;
+            var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
+
+            if (state == ModuleState.Module)
+                SetBadPatternBits(ref modulesBits, bit, 1);
+            else if (state == ModuleState.Reversed)
+                SetBadPatternBits(ref reversedBits, bit, 1);
+            else if (state == ModuleState.None)
+                SetBadPatternBits(ref lightBits, bit, 1);
+
+            ptr = ref Unsafe.Add(ref ptr, 1);
+        }
+
+        var result = 0;
+        var usedWords = (modules.Length + 63) >> 6;
+
+        for (var w = 0; w < usedWords; w++)
+        {
+            var b = w << 6;
+
+            // bit i of each value below represents module (b + i + offset)
+            var l1 = GetBadPatternBits(ref lightBits, b + 1);
+            var l5 = GetBadPatternBits(ref lightBits, b + 5);
+
+            var patternModule = GetBadPatternBits(ref modulesBits, b)
+                & GetBadPatternBits(ref modulesBits, b + 2)
+                & GetBadPatternBits(ref modulesBits, b + 3)
+                & GetBadPatternBits(ref modulesBits, b + 4)
+                & GetBadPatternBits(ref modulesBits, b + 6);
+
+            var patternReversed = GetBadPatternBits(ref reversedBits, b)
+                & GetBadPatternBits(ref reversedBits, b + 2)
+                & GetBadPatternBits(ref reversedBits, b + 3)
+                & GetBadPatternBits(ref reversedBits, b + 4)
+                & GetBadPatternBits(ref reversedBits, b + 6);
+
+            // bit i set = [dark, light, dark, dark, dark, light, dark] starts at module (b + i)
+            var pattern = (patternModule | patternReversed) & l1 & l5;
+            if (pattern == 0)
+                continue;
+
+            var lightBefore = GetBadPatternBits(ref lightBits, b - 4)
+                & GetBadPatternBits(ref lightBits, b - 3)
+                & GetBadPatternBits(ref lightBits, b - 2)
+                & GetBadPatternBits(ref lightBits, b - 1);
+
+            var lightAfter = GetBadPatternBits(ref lightBits, b + 7)
+                & GetBadPatternBits(ref lightBits, b + 8)
+                & GetBadPatternBits(ref lightBits, b + 9)
+                & GetBadPatternBits(ref lightBits, b + 10);
+
+            result += (BitOperations.PopCount(pattern & lightBefore) + BitOperations.PopCount(pattern & lightAfter)) * PENALTY_N3;
         }
 
         return result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ExtractFlagsAndSumBlack(ref ModuleState mptr, Span<ModuleState> moduleDestiny, Span<ModuleState> reverseDestiny)
+    private static void SetBadPatternBits(ref ulong bits, int bit, ulong mask)
+    {
+        // bit is always aligned to the vector size, so mask never crosses a word boundary
+        Unsafe.Add(ref bits, 1 + (bit >> 6)) |= mask << (bit & 63);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GetBadPatternBits(ref ulong bits, int bit)
+    {
+        // returns the 64 bits starting at "bit", bit may be negative (reads the leading padding word)
+        var idx = 1 + (bit >> 6);
+        var shift = bit & 63;
+        var lo = Unsafe.Add(ref bits, idx);
+        var hi = Unsafe.Add(ref bits, idx + 1);
+        return (lo >> shift) | ((hi << 1) << (63 - shift));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SumBlack(ReadOnlySpan<ModuleState> mptr)
     {
         var count = 0;
-        ref var mdptr = ref MemoryMarshal.GetReference(moduleDestiny);
-        ref var rdptr = ref MemoryMarshal.GetReference(reverseDestiny);
+
         if (Vector256.IsHardwareAccelerated || Vector128.IsHardwareAccelerated)
         {
-            ref var ptr = ref Unsafe.As<ModuleState, byte>(ref mptr);
-            ref var end = ref Unsafe.Add(ref ptr, moduleDestiny.Length);
-            ref var modulePtr = ref Unsafe.As<ModuleState, byte>(ref mdptr);
-            ref var moduleEndPtr = ref Unsafe.Add(ref modulePtr, moduleDestiny.Length);
-            ref var reversePtr = ref Unsafe.As<ModuleState, byte>(ref rdptr);
-            ref var reverseEndPtr = ref Unsafe.Add(ref reversePtr, reverseDestiny.Length);
+            ref var ptr = ref Unsafe.As<ModuleState, byte>(ref MemoryMarshal.GetReference(mptr));
+            ref var end = ref Unsafe.Add(ref ptr, mptr.Length);
 
-            if (Vector256.IsHardwareAccelerated && moduleDestiny.Length >= Vector256<byte>.Count)
+            if (Vector256.IsHardwareAccelerated && mptr.Length >= Vector256<byte>.Count)
             {
                 var module = Vector256.Create((byte)ModuleState.Module);
-                var reversed = Vector256.Create((byte)ModuleState.Reversed);
                 while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref ptr, Vector256<byte>.Count), ref end))
                 {
                     var vec = Vector256.LoadUnsafe(ref ptr);
                     var mVec = vec & module;
-                    var rVec = vec & reversed;
-
-                    mVec.StoreUnsafe(ref modulePtr);
-                    rVec.StoreUnsafe(ref reversePtr);
 
                     var mask = Vector256.Equals(mVec, module).ExtractMostSignificantBits();
                     count += BitOperations.PopCount(mask);
 
                     ptr = ref Unsafe.Add(ref ptr, Vector256<byte>.Count);
-                    modulePtr = ref Unsafe.Add(ref modulePtr, Vector256<byte>.Count);
-                    reversePtr = ref Unsafe.Add(ref reversePtr, Vector256<byte>.Count);
                 }
 
                 if (Unsafe.IsAddressLessThan(ref ptr, ref end))
                 {
                     var vec = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector256<byte>.Count));
                     var mVec = vec & module;
-                    var rVec = vec & reversed;
-
-                    mVec.StoreUnsafe(ref Unsafe.Subtract(ref moduleEndPtr, Vector256<byte>.Count));
-                    rVec.StoreUnsafe(ref Unsafe.Subtract(ref reverseEndPtr, Vector256<byte>.Count));
 
                     var mask = Vector256.Equals(mVec, module).ExtractMostSignificantBits();
                     count += BitOperations.PopCount(mask >> (Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end)));
                 }
             }
-            else if (Vector128.IsHardwareAccelerated && moduleDestiny.Length >= Vector128<byte>.Count)
+            else if (Vector128.IsHardwareAccelerated && mptr.Length >= Vector128<byte>.Count)
             {
                 var module = Vector128.Create((byte)ModuleState.Module);
-                var reversed = Vector128.Create((byte)ModuleState.Reversed);
                 while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref ptr, Vector128<byte>.Count), ref end))
                 {
                     var vec = Vector128.LoadUnsafe(ref ptr);
                     var mVec = vec & module;
-                    var rVec = vec & reversed;
-
-                    mVec.StoreUnsafe(ref modulePtr);
-                    rVec.StoreUnsafe(ref reversePtr);
 
                     var mask = Vector128.Equals(mVec, module).ExtractMostSignificantBits();
                     count += BitOperations.PopCount(mask);
 
                     ptr = ref Unsafe.Add(ref ptr, Vector128<byte>.Count);
-                    modulePtr = ref Unsafe.Add(ref modulePtr, Vector128<byte>.Count);
-                    reversePtr = ref Unsafe.Add(ref reversePtr, Vector128<byte>.Count);
                 }
 
                 if (Unsafe.IsAddressLessThan(ref ptr, ref end))
                 {
                     var vec = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector128<byte>.Count));
                     var mVec = vec & module;
-                    var rVec = vec & reversed;
-
-                    mVec.StoreUnsafe(ref Unsafe.Subtract(ref moduleEndPtr, Vector128<byte>.Count));
-                    rVec.StoreUnsafe(ref Unsafe.Subtract(ref reverseEndPtr, Vector128<byte>.Count));
 
                     var mask = Vector128.Equals(mVec, module).ExtractMostSignificantBits();
                     count += BitOperations.PopCount(mask >> (Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end)));
@@ -999,12 +1067,10 @@ public partial class QrCode
         }
         else
         {
-            for (var i = 0; i < moduleDestiny.Length; i++)
+            for (var i = 0; i < mptr.Length; i++)
             {
-                var mi = Unsafe.Add(ref mptr, i);
+                var mi = mptr[i];
                 var m = mi & ModuleState.Module;
-                Unsafe.Add(ref mdptr, i) = m;
-                Unsafe.Add(ref rdptr, i) = mi & ModuleState.Reversed;
                 if (m == ModuleState.Module)
                     count++;
             }
