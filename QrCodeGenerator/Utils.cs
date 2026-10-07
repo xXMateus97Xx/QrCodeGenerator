@@ -119,6 +119,10 @@ public static class Utils
     /// <item><description><c>ConvertToInt32</c> volta para inteiro truncando a parte fracionária, o que equivale à divisão inteira.</description></item>
     /// <item><description><c>Narrow</c> junta as duas metades de volta em 16 <c>short</c>.</description></item>
     /// </list>
+    /// <para>
+    /// <paramref name="mul"/> precisa estar arredondado para cima (ex.: <c>MathF.BitIncrement(1f / b)</c>): se ficar menor que
+    /// <c>1 / b</c>, múltiplos exatos de <c>b</c> resultam em algo como <c>k - 0.00001</c>, e o truncamento devolve <c>k - 1</c>.
+    /// </para>
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Vector256<short> Div(Vector256<short> a, float mul)

@@ -112,8 +112,9 @@ public partial class QrCode
     {
         var arr = new float[MAX_VERSION + 1];
 
+        // rounded up so that pos * inverse never truncates below the real quotient when pos is a multiple of size
         for (var i = MIN_VERSION; i <= MAX_VERSION; i++)
-            arr[i] = 1 / (float)(i * 4 + 17);
+            arr[i] = MathF.BitIncrement(1 / (float)(i * 4 + 17));
 
         return arr;
     }

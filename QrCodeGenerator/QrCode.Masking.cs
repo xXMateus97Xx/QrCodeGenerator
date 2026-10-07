@@ -130,7 +130,7 @@ public partial class QrCode
     /// (aplicar a máscara é inverter a cor).</description></item>
     /// <item><description>Com <c>ConditionalSelect</c> são montados <c>toAdd</c> (bits a ligar via OR) e <c>toRemove</c>
     /// (bits a manter via AND), atualizando apenas o bit <see cref="ModuleState.Module"/> sem desvios condicionais: lanes com
-    /// <c>finalApply</c> desligado recebem o bit <c>Module</c> e lanes com <c>finalApply</c> ligado o perdem. Os demais
+    /// <c>finalApply</c> ligado recebem o bit <c>Module</c> e lanes com <c>finalApply</c> desligado o perdem. Os demais
     /// flags do byte não são alterados. O vetor resultante é gravado de volta na matriz.</description></item>
     /// <item><description>O bit <see cref="ModuleState.Reversed"/> fica na posição transposta <c>(x, y) -&gt; x * size + y</c>,
     /// que não é contígua, então não dá para gravá-lo com um store vetorial. <c>ExtractMostSignificantBits</c> converte
@@ -195,8 +195,8 @@ public partial class QrCode
                 var finalApply = Vector256.Narrow(apply, apply2).AsByte();
                 finalApply ^= Vector256.Equals(allModules & module, module);
 
-                var toAdd = Vector256.ConditionalSelect(finalApply, Vector256<byte>.Zero, module);
-                var toRemove = Vector256.ConditionalSelect(finalApply, moduleReverse, Vector256<byte>.AllBitsSet);
+                var toAdd = Vector256.ConditionalSelect(finalApply, module, Vector256<byte>.Zero);
+                var toRemove = Vector256.ConditionalSelect(finalApply, Vector256<byte>.AllBitsSet, moduleReverse);
 
                 allModules |= toAdd;
                 allModules &= toRemove;
@@ -247,8 +247,8 @@ public partial class QrCode
                 var finalApply = Vector128.Narrow(apply, apply2).AsByte();
                 finalApply ^= Vector128.Equals(allModules & module, module);
 
-                var toAdd = Vector128.ConditionalSelect(finalApply, Vector128<byte>.Zero, module);
-                var toRemove = Vector128.ConditionalSelect(finalApply, moduleReverse, Vector128<byte>.AllBitsSet);
+                var toAdd = Vector128.ConditionalSelect(finalApply, module, Vector128<byte>.Zero);
+                var toRemove = Vector128.ConditionalSelect(finalApply, Vector128<byte>.AllBitsSet, moduleReverse);
 
                 allModules |= toAdd;
                 allModules &= toRemove;
@@ -473,11 +473,9 @@ public partial class QrCode
 
             black += SumBlack(next);
 
-            result += FindBadPatternFast(current);
+            result += FindLinePatterns(current, ModuleState.Module);
 
-            result += FindSequentialPatternFast(current, ModuleState.Module);
-
-            result += FindSequentialPatternFast(current, ModuleState.Reversed);
+            result += FindLinePatterns(current, ModuleState.Reversed);
 
             result += FindSquarePattern(current, next);
 
@@ -489,9 +487,8 @@ public partial class QrCode
             current = next;
         }
 
-        result += FindSequentialPatternFast(current, ModuleState.Module);
-        result += FindSequentialPatternFast(current, ModuleState.Reversed);
-        result += FindBadPatternFast(current);
+        result += FindLinePatterns(current, ModuleState.Module);
+        result += FindLinePatterns(current, ModuleState.Reversed);
 
         var total = size * size;
 
@@ -514,7 +511,8 @@ public partial class QrCode
     /// <item><description>Para contar os pares de bits vizinhos: <c>TrailingZeroCount</c> pula as colunas que não formam dominó;
     /// se os dois bits mais baixos forem <c>11</c>, soma a penalidade; depois desloca 1 bit e repete. Uma sequência de n bits
     /// ligados gera n - 1 blocos 2x2, igual à contagem escalar.</description></item>
-    /// <item><description>Repete o mesmo processo comparando com <see cref="ModuleState.None"/> para os módulos claros.</description></item>
+    /// <item><description>Repete o mesmo processo para os módulos claros, comparando o bit <see cref="ModuleState.Module"/>
+    /// isolado com zero.</description></item>
     /// <item><description>Avança só <c>Count - 1</c> colunas, para que a última coluna de um bloco seja a primeira do próximo e
     /// o par que cruza a fronteira entre blocos também seja avaliado.</description></item>
     /// <item><description>Para as colunas que sobram, carrega os últimos 32 bytes da linha (terminando exatamente no fim, para
@@ -534,7 +532,6 @@ public partial class QrCode
         if (Vector256.IsHardwareAccelerated && line1.Length >= Vector256<byte>.Count)
         {
             var mvec = Vector256.Create((byte)ModuleState.Module);
-            var lvec = Vector256.Create((byte)ModuleState.None);
             while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref l1ptr, Vector256<byte>.Count), ref l1end))
             {
                 var vec1 = Vector256.LoadUnsafe(ref l1ptr);
@@ -551,7 +548,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector256.Equals(vec1 & lvec, lvec) & Vector256.Equals(vec2 & lvec, lvec);
+                eq = Vector256.Equals(vec1 & mvec, Vector256<byte>.Zero) & Vector256.Equals(vec2 & mvec, Vector256<byte>.Zero);
                 mask = eq.ExtractMostSignificantBits();
 
                 while (mask > 1)
@@ -584,7 +581,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector256.Equals(vec1 & lvec, lvec) & Vector256.Equals(vec2 & lvec, lvec);
+                eq = Vector256.Equals(vec1 & mvec, Vector256<byte>.Zero) & Vector256.Equals(vec2 & mvec, Vector256<byte>.Zero);
                 mask = eq.ExtractMostSignificantBits();
 
                 mask >>= Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref l1ptr, ref l1end);
@@ -601,7 +598,6 @@ public partial class QrCode
         else if (Vector128.IsHardwareAccelerated && line1.Length >= Vector128<byte>.Count)
         {
             var mvec = Vector128.Create((byte)ModuleState.Module);
-            var lvec = Vector128.Create((byte)ModuleState.None);
             while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref l1ptr, Vector128<byte>.Count), ref l1end))
             {
                 var vec1 = Vector128.LoadUnsafe(ref l1ptr);
@@ -618,7 +614,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector128.Equals(vec1 & lvec, lvec) & Vector128.Equals(vec2 & lvec, lvec);
+                eq = Vector128.Equals(vec1 & mvec, Vector128<byte>.Zero) & Vector128.Equals(vec2 & mvec, Vector128<byte>.Zero);
                 mask = eq.ExtractMostSignificantBits();
 
                 while (mask > 1)
@@ -651,7 +647,7 @@ public partial class QrCode
                     mask >>= 1;
                 }
 
-                eq = Vector128.Equals(vec1 & lvec, lvec) & Vector128.Equals(vec2 & lvec, lvec);
+                eq = Vector128.Equals(vec1 & mvec, Vector128<byte>.Zero) & Vector128.Equals(vec2 & mvec, Vector128<byte>.Zero);
                 mask = eq.ExtractMostSignificantBits();
 
                 mask >>= Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref l1ptr, ref l1end);
@@ -667,17 +663,21 @@ public partial class QrCode
         }
         else
         {
-            var p1 = l1ptr;
-            var p2 = l2ptr;
+            // only the color matters, the other flags must be ignored
+            const byte module = (byte)ModuleState.Module;
+            var p1 = l1ptr & module;
+            var p2 = l2ptr & module;
             l1ptr = ref Unsafe.Add(ref l1ptr, 1);
             l2ptr = ref Unsafe.Add(ref l2ptr, 1);
             while (Unsafe.IsAddressLessThan(ref l1ptr, ref l1end))
             {
-                if (p1 == p2 && l1ptr == l2ptr && p1 == l1ptr)
+                var n1 = l1ptr & module;
+                var n2 = l2ptr & module;
+                if (p1 == p2 && n1 == n2 && p1 == n1)
                     result += PENALTY_N2;
 
-                p1 = l1ptr;
-                p2 = l2ptr;
+                p1 = n1;
+                p2 = n2;
 
                 l1ptr = ref Unsafe.Add(ref l1ptr, 1);
                 l2ptr = ref Unsafe.Add(ref l2ptr, 1);
@@ -688,480 +688,229 @@ public partial class QrCode
     }
 
     /// <summary>
-    /// Regra de penalidade N1: procura sequências de 5 ou mais módulos da mesma cor em uma linha e soma
-    /// <c>3 + (comprimento - 5)</c> para cada uma, medindo os comprimentos das sequências 32 módulos por vez.
+    /// Regras de penalidade N1 e N3 para uma linha, com o mesmo resultado da implementação de referência
+    /// (<see cref="PenaltyIteration"/> e <see cref="FinderPenaltyTerminateAndCount"/>), mas processando uma sequência
+    /// (run) de módulos da mesma cor por vez em vez de um módulo por vez.
     /// <para>
     /// <paramref name="flag"/> escolhe o que é analisado: <see cref="ModuleState.Module"/> varre a linha em si e
     /// <see cref="ModuleState.Reversed"/> varre a coluna correspondente (o flag guarda a matriz transposta).
     /// </para>
     /// <list type="number">
-    /// <item><description>Carrega 32 bytes, isola <paramref name="flag"/> com AND e compara com <c>Equals</c>; com
-    /// <c>ExtractMostSignificantBits</c> a linha vira uma máscara de 32 bits (bit i = módulo i escuro).</description></item>
-    /// <item><description>Sequências de cor iguais viram sequências de bits iguais, e <c>TrailingZeroCount</c> mede
-    /// de uma vez quantos zeros seguidos existem a partir do bit atual. Se o bit atual for 1 (resultado 0), a máscara é
-    /// invertida para que a sequência de 1s vire uma sequência de 0s e possa ser medida da mesma forma. A variável
-    /// <c>turn</c> registra se a máscara atual está invertida em relação à original.</description></item>
-    /// <item><description>O comprimento medido é limitado ao fim do bloco (<c>Math.Min</c>), pois a inversão transforma
-    /// os bits vazios da parte alta em 1s. Em seguida a máscara é deslocada por esse comprimento para chegar à próxima sequência.</description></item>
-    /// <item><description>Sequências de 5 ou mais geram <c>3 + (comprimento - 5)</c> de penalidade.</description></item>
-    /// <item><description>Uma sequência pode continuar no próximo bloco. <c>lastCheck</c> guarda o comprimento da sequência
-    /// que terminou no fim do bloco. No bloco seguinte, a máscara é invertida se <c>turn</c> estiver ligado (para manter a mesma
-    /// cor sendo medida), mede-se a continuação e o total <c>lastCheck + step</c> é avaliado: se a parte anterior já tinha 5 ou
-    /// mais, ela já foi penalizada e só soma +1 por módulo extra; caso contrário aplica a regra completa sobre o total.</description></item>
-    /// <item><description>Para os módulos restantes, carrega os últimos 32 bytes da linha (sobrepondo módulos já vistos para
-    /// não ler fora do array) e desloca a máscara para descartar a parte já processada, começando <c>pos</c> nesse deslocamento.</description></item>
-    /// <item><description>Com apenas 128 bits disponíveis usa o mesmo algoritmo com 16 módulos por bloco; sem SIMD usa
-    /// <see cref="FindSequentialPattern"/>.</description></item>
+    /// <item><description><see cref="GetDarkBits"/> converte a linha em um bitmap (bit i = módulo i escuro) usando
+    /// comparações SIMD de 32 ou 16 módulos por vez.</description></item>
+    /// <item><description><see cref="NextColorChange"/> encontra o fim de cada sequência com <c>TrailingZeroCount</c> sobre o
+    /// bitmap (invertido quando a sequência é escura), pulando até 64 módulos por instrução. Como as cores sempre se
+    /// alternam, o laço processa pares (clara, escura) sem precisar testar a cor de cada sequência; só a primeira sequência
+    /// clara pode ter comprimento zero (quando a linha começa escura).</description></item>
+    /// <item><description>N1: cada sequência com 5 ou mais módulos soma <c>PENALTY_N1 + (comprimento - 5)</c>.</description></item>
+    /// <item><description>N3: os comprimentos das sequências entram em um histórico de 7 posições
+    /// (<see cref="RunHistory.Add"/>). A primeira sequência clara recebe <c>size</c> extra, porque a borda do QR conta como
+    /// clara. Sempre que termina uma sequência clara, <see cref="RunHistory.CountPatterns"/> verifica se as últimas
+    /// sequências formam o padrão <c>n:n:3n:n:n</c> com uma margem clara de pelo menos <c>4n</c> de um dos lados.</description></item>
+    /// <item><description>No fim da linha a última sequência é fechada com a borda clara (mais <c>size</c>) e o histórico é
+    /// verificado uma última vez.</description></item>
     /// </list>
     /// </summary>
-    private static int FindSequentialPatternFast(ReadOnlySpan<ModuleState> modules, ModuleState flag)
+    private static int FindLinePatterns(ReadOnlySpan<ModuleState> modules, ModuleState flag)
     {
+        const int words = (MAX_VERSION * 4 + 17 + 63) >> 6;
+
+        var size = modules.Length;
+        Span<ulong> darkBits = stackalloc ulong[words];
+        GetDarkBits(modules, flag, darkBits);
+        ref var dark = ref MemoryMarshal.GetReference(darkBits);
+
+        var history = new RunHistory();
         var result = 0;
 
-        ref var ptr = ref Unsafe.As<ModuleState, byte>(ref MemoryMarshal.GetReference(modules));
-        ref var end = ref Unsafe.Add(ref ptr, modules.Length);
+        // runs always alternate, so the line is processed as (light, dark) pairs; the first light run may be empty
+        var pos = NextColorChange(ref dark, words, 0, false, size);
+        var lightLength = pos;
+        result += RunPenalty(lightLength);
 
-        if (Vector256.IsHardwareAccelerated && modules.Length >= Vector256<byte>.Count)
+        while (pos < size)
         {
-            var flagv = Vector256.Create((byte)flag);
-            var turn = false; //false - check white, true - check black
-            var lastCheck = 0;
+            // a light run ended: check if it closes a finder-like pattern
+            history.Add(lightLength, size);
+            result += history.CountPatterns() * PENALTY_N3;
 
-            while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref ptr, Vector256<byte>.Count), ref end))
+            var end = NextColorChange(ref dark, words, pos, true, size);
+            var darkLength = end - pos;
+            result += RunPenalty(darkLength);
+            history.Add(darkLength, size);
+            pos = end;
+
+            if (pos == size)
             {
-                var vec = Vector256.LoadUnsafe(ref ptr);
-
-                var eq = Vector256.Equals(vec & flagv, flagv);
-
-                var mask = eq.ExtractMostSignificantBits();
-
-                var pos = 0;
-
-                if (lastCheck > 0)
-                {
-                    if (turn)
-                        mask = ~mask;
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    step = Math.Min(step, Vector256<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    var fullStep = lastCheck + step;
-
-                    if (lastCheck >= 5)
-                        result += step;
-                    else if (fullStep >= 5)
-                        result += 3 + (fullStep - 5);
-
-                    lastCheck = pos == Vector256<byte>.Count ? step : 0;
-                }
-
-                while (pos < Vector256<byte>.Count)
-                {
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    if (step == 0)
-                    {
-                        turn = !turn;
-                        mask = ~mask;
-                        step = BitOperations.TrailingZeroCount(mask);
-                    }
-                    step = Math.Min(step, Vector256<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    if (pos == Vector256<byte>.Count)
-                        lastCheck = step;
-
-                    if (step >= 5)
-                        result += 3 + (step - 5);
-                }
-
-                ptr = ref Unsafe.Add(ref ptr, Vector256<byte>.Count);
+                // line ended on a dark run, the border after it counts as a light run
+                history.Add(size, size);
+                return result + history.CountPatterns() * PENALTY_N3;
             }
 
-            if (Unsafe.IsAddressLessThan(ref ptr, ref end))
-            {
-                var vec = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector256<byte>.Count));
-
-                var eq = Vector256.Equals(vec & flagv, flagv);
-
-                var mask = eq.ExtractMostSignificantBits();
-
-                var pos = Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end);
-                mask >>= pos;
-
-                if (lastCheck > 0)
-                {
-                    if (turn)
-                        mask = ~mask;
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    step = Math.Min(step, Vector256<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    var fullStep = lastCheck + step;
-
-                    if (lastCheck >= 5)
-                        result += step;
-                    else if (fullStep >= 5)
-                        result += 3 + (fullStep - 5);
-                }
-
-                while (pos < Vector256<byte>.Count)
-                {
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    if (step == 0)
-                    {
-                        mask = ~mask;
-                        step = BitOperations.TrailingZeroCount(mask);
-                    }
-                    step = Math.Min(step, Vector256<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    if (step >= 5)
-                        result += 3 + (step - 5);
-                }
-            }
-        }
-        else if (Vector128.IsHardwareAccelerated && modules.Length >= Vector128<byte>.Count)
-        {
-            var flagv = Vector128.Create((byte)flag);
-            var turn = false; //false - check white, true - check black
-            var lastCheck = 0;
-
-            while (Unsafe.IsAddressLessThan(ref Unsafe.Add(ref ptr, Vector128<byte>.Count), ref end))
-            {
-                var vec = Vector128.LoadUnsafe(ref ptr);
-
-                var eq = Vector128.Equals(vec & flagv, flagv);
-
-                var mask = eq.ExtractMostSignificantBits();
-
-                var pos = 0;
-
-                if (lastCheck > 0)
-                {
-                    if (turn)
-                        mask = ~mask;
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    step = Math.Min(step, Vector128<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    var fullStep = lastCheck + step;
-
-                    if (lastCheck >= 5)
-                        result += step;
-                    else if (fullStep >= 5)
-                        result += 3 + (fullStep - 5);
-
-                    lastCheck = pos == Vector128<byte>.Count ? step : 0;
-                }
-
-                while (pos < Vector128<byte>.Count)
-                {
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    if (step == 0)
-                    {
-                        turn = !turn;
-                        mask = ~mask;
-                        step = BitOperations.TrailingZeroCount(mask);
-                    }
-                    step = Math.Min(step, Vector128<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    if (pos == Vector128<byte>.Count)
-                        lastCheck = step;
-
-                    if (step >= 5)
-                        result += 3 + (step - 5);
-                }
-
-                ptr = ref Unsafe.Add(ref ptr, Vector128<byte>.Count);
-            }
-
-            if (Unsafe.IsAddressLessThan(ref ptr, ref end))
-            {
-                var vec = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector128<byte>.Count));
-
-                var eq = Vector128.Equals(vec & flagv, flagv);
-
-                var mask = eq.ExtractMostSignificantBits();
-
-                var pos = Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end);
-                mask >>= pos;
-
-                if (lastCheck > 0)
-                {
-                    if (turn)
-                        mask = ~mask;
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    step = Math.Min(step, Vector128<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    var fullStep = lastCheck + step;
-
-                    if (lastCheck >= 5)
-                        result += step;
-                    else if (fullStep >= 5)
-                        result += 3 + (fullStep - 5);
-                }
-
-                while (pos < Vector128<byte>.Count)
-                {
-                    var step = BitOperations.TrailingZeroCount(mask);
-                    if (step == 0)
-                    {
-                        mask = ~mask;
-                        step = BitOperations.TrailingZeroCount(mask);
-                    }
-                    step = Math.Min(step, Vector128<byte>.Count - pos);
-                    pos += step;
-                    mask >>= step;
-
-                    if (step >= 5)
-                        result += 3 + (step - 5);
-                }
-            }
-        }
-        else
-        {
-            return FindSequentialPattern(modules, flag);
+            end = NextColorChange(ref dark, words, pos, false, size);
+            lightLength = end - pos;
+            result += RunPenalty(lightLength);
+            pos = end;
         }
 
-        return result;
+        // line ended on a light run, which is extended by the light border
+        history.Add(lightLength + size, size);
+        return result + history.CountPatterns() * PENALTY_N3;
     }
 
-    private static int FindSequentialPattern(ReadOnlySpan<ModuleState> modules, ModuleState flag)
-    {
-        var result = 0;
-
-        ReadOnlySpan<ModuleState> seq = flag == ModuleState.Module ?
-            [ModuleState.Module, ModuleState.Module, ModuleState.Module, ModuleState.Module, ModuleState.Module] :
-            [ModuleState.Reversed, ModuleState.Reversed, ModuleState.Reversed, ModuleState.Reversed, ModuleState.Reversed];
-        const ModuleState light = ModuleState.None;
-        ReadOnlySpan<ModuleState> lightSeq = [light, light, light, light, light];
-
-        while (modules.Length >= seq.Length)
-        {
-            var length = modules.CommonPrefixLength(seq);
-            if (length == 5)
-            {
-                result += PENALTY_N1;
-                while (length > 0)
-                {
-                    modules = modules.Slice(length);
-                    length = modules.CommonPrefixLength(seq);
-                    result += length;
-                }
-            }
-
-            if (length == 0)
-            {
-                length = modules.CommonPrefixLength(lightSeq);
-                if (length == 5)
-                {
-                    result += PENALTY_N1;
-                    while (length > 0)
-                    {
-                        modules = modules.Slice(length);
-                        length = modules.CommonPrefixLength(lightSeq);
-                        result += length;
-                    }
-                }
-            }
-
-            if (modules.Length >= length)
-                modules = modules.Slice(length);
-        }
-
-        return result;
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int RunPenalty(int length) => length >= 5 ? PENALTY_N1 + (length - 5) : 0;
 
     /// <summary>
-    /// Regra de penalidade N3: procura o padrão parecido com o finder pattern (escuro, claro, escuro, escuro, escuro, claro,
-    /// escuro = 1:1:3:1:1) precedido ou seguido por 4 módulos claros, somando <c>PENALTY_N3</c> por ocorrência.
+    /// Preenche <paramref name="bits"/> com o bitmap da linha: bit i ligado quando o módulo i tem <paramref name="flag"/>.
     /// <list type="number">
-    /// <item><description>Aloca na stack três bitmaps de 64 bits por palavra (bit i = módulo i): escuro em
-    /// <see cref="ModuleState.Module"/>, escuro em <see cref="ModuleState.Reversed"/> e claro. Cada bitmap tem uma palavra
-    /// de padding antes e duas depois dos dados, para que as leituras deslocadas nunca saiam do buffer.</description></item>
-    /// <item><description>Carrega 32 bytes da linha e mantém só os bits <c>Module | Reversed</c> com AND.</description></item>
-    /// <item><description>Compara esse vetor uma única vez com cada estado (<c>Module</c>, <c>Reversed</c> e zero = claro).
-    /// <c>ExtractMostSignificantBits</c> converte cada comparação em 32 bits, que
-    /// <see cref="SetBadPatternBits"/> grava no bitmap correspondente na posição do bloco.</description></item>
-    /// <item><description>Os módulos que sobram usam uma última carga terminando no fim da linha, deslocando a máscara para
-    /// descartar o que já foi gravado; com 128 bits o processo é o mesmo com 16 módulos por vez; sem SIMD, o laço
-    /// escalar preenche os bitmaps bit a bit.</description></item>
-    /// <item><description>Com os bitmaps prontos, o padrão é testado em 64 posições iniciais de uma vez: para cada palavra,
-    /// <see cref="GetBadPatternBits"/> lê 64 bits começando nos deslocamentos <c>+0, +2, +3, +4, +6</c> (escuros) e
-    /// <c>+1, +5</c> (claros). O AND de todos eles deixa ligado o bit i somente se o padrão 1011101 começa no módulo
-    /// <c>b + i</c>. Isso é feito separadamente para os bitmaps <c>Module</c> e <c>Reversed</c> e o resultado é combinado com OR.</description></item>
-    /// <item><description>Se nenhum padrão foi encontrado na palavra, passa para a próxima.</description></item>
-    /// <item><description>Do mesmo jeito, calcula <c>lightBefore</c> (módulos <c>-4</c> a <c>-1</c> claros) e <c>lightAfter</c>
-    /// (módulos <c>+7</c> a <c>+10</c> claros). <c>PopCount(pattern &amp; lightBefore)</c> e
-    /// <c>PopCount(pattern &amp; lightAfter)</c> contam as ocorrências válidas, multiplicadas por <c>PENALTY_N3</c>.</description></item>
+    /// <item><description>Carrega 32 bytes, isola <paramref name="flag"/> com AND e compara com <c>Equals</c>;
+    /// <c>ExtractMostSignificantBits</c> transforma o resultado em 32 bits (bit i = lane i).</description></item>
+    /// <item><description>Os bits são gravados na posição do bloco. Como o deslocamento é sempre múltiplo do tamanho do
+    /// vetor, os bits de um bloco nunca cruzam a fronteira entre duas palavras de 64 bits.</description></item>
+    /// <item><description>Os módulos que sobram usam uma última carga terminando no fim da linha (sobrepondo módulos já
+    /// lidos, para não ler fora do array) e a máscara é deslocada para descartar a parte já gravada.</description></item>
+    /// <item><description>Com apenas 128 bits o processo é o mesmo com 16 módulos por vez; sem SIMD, bit a bit.</description></item>
     /// </list>
     /// </summary>
-    private static int FindBadPatternFast(ReadOnlySpan<ModuleState> modules)
+    private static void GetDarkBits(ReadOnlySpan<ModuleState> modules, ModuleState flag, Span<ulong> bits)
     {
-        // Each line is converted into three bitmasks (bit i = module i): dark Module, dark Reversed and light.
-        // Every vector is compared only once against each state, then the pattern 1011101 is matched in all
-        // positions at once by and-ing shifted copies of the bitmasks, so no per-offset comparison is needed.
-        // Layout of each bitmask: [padding, word0, word1, word2, padding, padding] so shifts never go out of bounds.
-        const int words = (MAX_VERSION * 4 + 17 + 63) >> 6;
-        const int paddedWords = words + 3;
-        const ModuleState flags = ModuleState.Module | ModuleState.Reversed;
-
-        Span<ulong> bits = stackalloc ulong[paddedWords * 3];
-        ref var modulesBits = ref MemoryMarshal.GetReference(bits);
-        ref var reversedBits = ref Unsafe.Add(ref modulesBits, paddedWords);
-        ref var lightBits = ref Unsafe.Add(ref reversedBits, paddedWords);
-
+        ref var bitsRef = ref MemoryMarshal.GetReference(bits);
         ref var start = ref Unsafe.As<ModuleState, byte>(ref MemoryMarshal.GetReference(modules));
         ref var ptr = ref start;
         ref var end = ref Unsafe.Add(ref ptr, modules.Length);
 
         if (Vector256.IsHardwareAccelerated && modules.Length >= Vector256<byte>.Count)
         {
-            var flagsv = Vector256.Create((byte)flags);
-            var module = Vector256.Create((byte)ModuleState.Module);
-            var reversed = Vector256.Create((byte)ModuleState.Reversed);
+            var flagv = Vector256.Create((byte)flag);
 
             while (!Unsafe.IsAddressGreaterThan(ref Unsafe.Add(ref ptr, Vector256<byte>.Count), ref end))
             {
-                var vec = Vector256.LoadUnsafe(ref ptr) & flagsv;
-                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
-
-                SetBadPatternBits(ref modulesBits, bit, Vector256.Equals(vec, module).ExtractMostSignificantBits());
-                SetBadPatternBits(ref reversedBits, bit, Vector256.Equals(vec, reversed).ExtractMostSignificantBits());
-                SetBadPatternBits(ref lightBits, bit, Vector256.Equals(vec, Vector256<byte>.Zero).ExtractMostSignificantBits());
-
+                var mask = Vector256.Equals(Vector256.LoadUnsafe(ref ptr) & flagv, flagv).ExtractMostSignificantBits();
+                SetDarkBits(ref bitsRef, (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr), mask);
                 ptr = ref Unsafe.Add(ref ptr, Vector256<byte>.Count);
             }
 
             if (Unsafe.IsAddressLessThan(ref ptr, ref end))
             {
-                var vec = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector256<byte>.Count)) & flagsv;
-                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
+                var vec = Vector256.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector256<byte>.Count));
+                var mask = Vector256.Equals(vec & flagv, flagv).ExtractMostSignificantBits();
                 var shift = Vector256<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end);
-
-                SetBadPatternBits(ref modulesBits, bit, Vector256.Equals(vec, module).ExtractMostSignificantBits() >> shift);
-                SetBadPatternBits(ref reversedBits, bit, Vector256.Equals(vec, reversed).ExtractMostSignificantBits() >> shift);
-                SetBadPatternBits(ref lightBits, bit, Vector256.Equals(vec, Vector256<byte>.Zero).ExtractMostSignificantBits() >> shift);
-
+                SetDarkBits(ref bitsRef, (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr), mask >> shift);
                 ptr = ref end;
             }
         }
         else if (Vector128.IsHardwareAccelerated && modules.Length >= Vector128<byte>.Count)
         {
-            var flagsv = Vector128.Create((byte)flags);
-            var module = Vector128.Create((byte)ModuleState.Module);
-            var reversed = Vector128.Create((byte)ModuleState.Reversed);
+            var flagv = Vector128.Create((byte)flag);
 
             while (!Unsafe.IsAddressGreaterThan(ref Unsafe.Add(ref ptr, Vector128<byte>.Count), ref end))
             {
-                var vec = Vector128.LoadUnsafe(ref ptr) & flagsv;
-                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
-
-                SetBadPatternBits(ref modulesBits, bit, Vector128.Equals(vec, module).ExtractMostSignificantBits());
-                SetBadPatternBits(ref reversedBits, bit, Vector128.Equals(vec, reversed).ExtractMostSignificantBits());
-                SetBadPatternBits(ref lightBits, bit, Vector128.Equals(vec, Vector128<byte>.Zero).ExtractMostSignificantBits());
-
+                var mask = Vector128.Equals(Vector128.LoadUnsafe(ref ptr) & flagv, flagv).ExtractMostSignificantBits();
+                SetDarkBits(ref bitsRef, (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr), mask);
                 ptr = ref Unsafe.Add(ref ptr, Vector128<byte>.Count);
             }
 
             if (Unsafe.IsAddressLessThan(ref ptr, ref end))
             {
-                var vec = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector128<byte>.Count)) & flagsv;
-                var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
+                var vec = Vector128.LoadUnsafe(ref Unsafe.Subtract(ref end, Vector128<byte>.Count));
+                var mask = Vector128.Equals(vec & flagv, flagv).ExtractMostSignificantBits();
                 var shift = Vector128<byte>.Count - (int)(nuint)Unsafe.ByteOffset(ref ptr, ref end);
-
-                SetBadPatternBits(ref modulesBits, bit, Vector128.Equals(vec, module).ExtractMostSignificantBits() >> shift);
-                SetBadPatternBits(ref reversedBits, bit, Vector128.Equals(vec, reversed).ExtractMostSignificantBits() >> shift);
-                SetBadPatternBits(ref lightBits, bit, Vector128.Equals(vec, Vector128<byte>.Zero).ExtractMostSignificantBits() >> shift);
-
+                SetDarkBits(ref bitsRef, (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr), mask >> shift);
                 ptr = ref end;
             }
         }
 
         while (Unsafe.IsAddressLessThan(ref ptr, ref end))
         {
-            var state = (ModuleState)ptr & flags;
-            var bit = (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr);
-
-            if (state == ModuleState.Module)
-                SetBadPatternBits(ref modulesBits, bit, 1);
-            else if (state == ModuleState.Reversed)
-                SetBadPatternBits(ref reversedBits, bit, 1);
-            else if (state == ModuleState.None)
-                SetBadPatternBits(ref lightBits, bit, 1);
+            if (((ModuleState)ptr & flag) != 0)
+                SetDarkBits(ref bitsRef, (int)(nuint)Unsafe.ByteOffset(ref start, ref ptr), 1);
 
             ptr = ref Unsafe.Add(ref ptr, 1);
         }
-
-        var result = 0;
-        var usedWords = (modules.Length + 63) >> 6;
-
-        for (var w = 0; w < usedWords; w++)
-        {
-            var b = w << 6;
-
-            // bit i of each value below represents module (b + i + offset)
-            var l1 = GetBadPatternBits(ref lightBits, b + 1);
-            var l5 = GetBadPatternBits(ref lightBits, b + 5);
-
-            var patternModule = GetBadPatternBits(ref modulesBits, b)
-                & GetBadPatternBits(ref modulesBits, b + 2)
-                & GetBadPatternBits(ref modulesBits, b + 3)
-                & GetBadPatternBits(ref modulesBits, b + 4)
-                & GetBadPatternBits(ref modulesBits, b + 6);
-
-            var patternReversed = GetBadPatternBits(ref reversedBits, b)
-                & GetBadPatternBits(ref reversedBits, b + 2)
-                & GetBadPatternBits(ref reversedBits, b + 3)
-                & GetBadPatternBits(ref reversedBits, b + 4)
-                & GetBadPatternBits(ref reversedBits, b + 6);
-
-            // bit i set = [dark, light, dark, dark, dark, light, dark] starts at module (b + i)
-            var pattern = (patternModule | patternReversed) & l1 & l5;
-            if (pattern == 0)
-                continue;
-
-            var lightBefore = GetBadPatternBits(ref lightBits, b - 4)
-                & GetBadPatternBits(ref lightBits, b - 3)
-                & GetBadPatternBits(ref lightBits, b - 2)
-                & GetBadPatternBits(ref lightBits, b - 1);
-
-            var lightAfter = GetBadPatternBits(ref lightBits, b + 7)
-                & GetBadPatternBits(ref lightBits, b + 8)
-                & GetBadPatternBits(ref lightBits, b + 9)
-                & GetBadPatternBits(ref lightBits, b + 10);
-
-            result += (BitOperations.PopCount(pattern & lightBefore) + BitOperations.PopCount(pattern & lightAfter)) * PENALTY_N3;
-        }
-
-        return result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SetBadPatternBits(ref ulong bits, int bit, ulong mask)
+    private static void SetDarkBits(ref ulong bits, int bit, uint mask)
     {
         // bit is always aligned to the vector size, so mask never crosses a word boundary
-        Unsafe.Add(ref bits, 1 + (bit >> 6)) |= mask << (bit & 63);
+        Unsafe.Add(ref bits, bit >> 6) |= (ulong)mask << (bit & 63);
     }
 
+    /// <summary>
+    /// Retorna a posição do primeiro módulo a partir de <paramref name="pos"/> cuja cor é diferente de
+    /// <paramref name="color"/>, ou <paramref name="size"/> se a sequência for até o fim da linha.
+    /// <list type="number">
+    /// <item><description>Se a sequência é escura, a palavra é invertida, assim o próximo módulo claro vira o próximo bit ligado.</description></item>
+    /// <item><description>Os bits antes de <paramref name="pos"/> são zerados e <c>TrailingZeroCount</c> devolve a posição
+    /// do primeiro bit ligado; se a palavra inteira for zero, passa para a próxima.</description></item>
+    /// <item><description>Os bits depois do fim da linha são zero no bitmap (viram 1 quando invertidos), então o resultado é
+    /// limitado a <paramref name="size"/>.</description></item>
+    /// </list>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong GetBadPatternBits(ref ulong bits, int bit)
+    private static int NextColorChange(ref ulong dark, int words, int pos, bool color, int size)
     {
-        // returns the 64 bits starting at "bit", bit may be negative (reads the leading padding word)
-        var idx = 1 + (bit >> 6);
-        var shift = bit & 63;
-        var lo = Unsafe.Add(ref bits, idx);
-        var hi = Unsafe.Add(ref bits, idx + 1);
-        return (lo >> shift) | ((hi << 1) << (63 - shift));
+        var invert = color ? ulong.MaxValue : 0UL;
+        var w = pos >> 6;
+        var bits = (Unsafe.Add(ref dark, w) ^ invert) & (ulong.MaxValue << (pos & 63));
+
+        while (bits == 0)
+        {
+            if (++w == words)
+                return size;
+            bits = Unsafe.Add(ref dark, w) ^ invert;
+        }
+
+        return Math.Min((w << 6) + BitOperations.TrailingZeroCount(bits), size);
+    }
+
+    /// <summary>
+    /// Histórico dos comprimentos das 7 últimas sequências de uma linha (<c>H0</c> é a mais recente), usado pela regra N3.
+    /// Os campos são variáveis locais comuns, então inserir uma sequência é só uma cadeia de atribuições, sem cópia de memória.
+    /// </summary>
+    private struct RunHistory
+    {
+        private int H0, H1, H2, H3, H4, H5, H6;
+
+        /// <summary>
+        /// Insere o comprimento de uma sequência como a mais recente, deslocando as anteriores. Se o histórico ainda estiver
+        /// vazio, soma <paramref name="size"/> ao comprimento, porque a borda do QR conta como uma sequência clara.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Add(int length, int size)
+        {
+            if (H0 == 0)
+                length += size;
+
+            H6 = H5;
+            H5 = H4;
+            H4 = H3;
+            H3 = H2;
+            H2 = H1;
+            H1 = H0;
+            H0 = length;
+        }
+
+        /// <summary>
+        /// Conta quantos padrões parecidos com o finder pattern terminam no histórico (0, 1 ou 2).
+        /// <list type="number">
+        /// <item><description><c>n = H1</c> é a unidade do padrão (a última sequência escura).</description></item>
+        /// <item><description>O núcleo exige que <c>H2..H5</c> seja <c>n, 3n, n, n</c>.</description></item>
+        /// <item><description>Conta um padrão se a sequência clara mais recente (<c>H0</c>) tiver pelo menos <c>4n</c> e a
+        /// mais antiga (<c>H6</c>) pelo menos <c>n</c>, e outro no caso simétrico.</description></item>
+        /// </list>
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly int CountPatterns()
+        {
+            var n = H1;
+            if (n <= 0 || H2 != n || H3 != n * 3 || H4 != n || H5 != n)
+                return 0;
+
+            return (H0 >= n * 4 && H6 >= n ? 1 : 0)
+                + (H6 >= n * 4 && H0 >= n ? 1 : 0);
+        }
     }
 
     /// <summary>
