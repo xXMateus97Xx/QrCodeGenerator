@@ -103,6 +103,44 @@ public partial class QrCode
         }
     }
 
+    /// <summary>
+    /// Versão vetorizada de <see cref="ApplyMask"/>: aplica o padrão de máscara <paramref name="msk"/> (0 a 7) na matriz,
+    /// processando 32 módulos por iteração com <see cref="Vector256{T}"/> (ou 16 com <see cref="Vector128{T}"/>).
+    /// <para>
+    /// A matriz é tratada como um array linear de <c>size * size</c> bytes (<see cref="ModuleState"/>), onde a posição
+    /// linear <c>pos</c> corresponde a <c>y = pos / size</c> (linha) e <c>x = pos % size</c> (coluna). Cada byte guarda
+    /// <see cref="ModuleState.Module"/> (cor do módulo (x, y)) e <see cref="ModuleState.Reversed"/> (cor do módulo
+    /// transposto, usado para varrer colunas como se fossem linhas).
+    /// </para>
+    /// <list type="number">
+    /// <item><description>Valida a máscara e, sem aceleração SIMD, cai no <see cref="ApplyMask"/> escalar.</description></item>
+    /// <item><description>Pré-calcula <c>versionMultipler = 1f / size</c>, usado para trocar divisões por multiplicações
+    /// em <see cref="Utils.Div(Vector256{short}, float)"/> e <see cref="Utils.Mod(Vector256{short}, short, float)"/>.</description></item>
+    /// <item><description>Carrega 32 bytes da matriz e os alarga (<c>Widen</c>) para dois vetores de 16 <c>short</c>
+    /// (<c>modules</c> e <c>modules2</c>), pois as contas da máscara (ex.: <c>x * y</c>, até 176 * 176) não cabem em 8 bits.</description></item>
+    /// <item><description>Monta as posições lineares das 16 lanes somando <c>pos</c> ao vetor de índices [0, 1, ..., 15]
+    /// e calcula <c>y</c> e <c>x</c> de todas as lanes de uma vez com <c>Div</c>/<c>Mod</c>.</description></item>
+    /// <item><description><c>apply</c> começa ligado (todos os bits 1) nas lanes que não são módulos de função
+    /// (<see cref="ModuleState.IsFunction"/>), pois esses nunca são mascarados. Em seguida
+    /// <see cref="CalculateMask(int, Vector256{short}, Vector256{short}, Vector256{short})"/> mantém ligadas apenas as lanes
+    /// em que a fórmula da máscara é verdadeira.</description></item>
+    /// <item><description>Repete os dois passos anteriores para a segunda metade (posições <c>pos + 16</c> até <c>pos + 31</c>).</description></item>
+    /// <item><description><c>Narrow</c> junta os dois resultados em uma máscara de 32 bytes (0xFF = inverter, 0x00 = manter) e o XOR
+    /// com o bit <see cref="ModuleState.Module"/> atual produz <c>finalApply</c>, que é a nova cor de cada módulo
+    /// (aplicar a máscara é inverter a cor).</description></item>
+    /// <item><description>Com <c>ConditionalSelect</c> são montados <c>toAdd</c> (bits a ligar via OR) e <c>toRemove</c>
+    /// (bits a manter via AND), atualizando apenas o bit <see cref="ModuleState.Module"/> sem desvios condicionais: lanes com
+    /// <c>finalApply</c> desligado recebem o bit <c>Module</c> e lanes com <c>finalApply</c> ligado o perdem. Os demais
+    /// flags do byte não são alterados. O vetor resultante é gravado de volta na matriz.</description></item>
+    /// <item><description>O bit <see cref="ModuleState.Reversed"/> fica na posição transposta <c>(x, y) -&gt; x * size + y</c>,
+    /// que não é contígua, então não dá para gravá-lo com um store vetorial. <c>ExtractMostSignificantBits</c> converte
+    /// <c>finalApply</c> em um inteiro de 32 bits (bit i = lane i), <c>x</c> e <c>y</c> são estreitados para bytes e
+    /// <see cref="ApplyReverseMask(ref ModuleState, Vector256{byte}, Vector256{byte}, uint)"/> grava cada lane individualmente.</description></item>
+    /// <item><description>Avança 32 posições. O que sobra é processado com o mesmo algoritmo em <see cref="Vector128{T}"/>
+    /// (16 módulos por iteração) e, por fim, com o laço escalar usando <see cref="CalculateMask(int, int, int, ModuleState)"/>
+    /// e <see cref="SetMask"/>.</description></item>
+    /// </list>
+    /// </summary>
     private void ApplyMaskFast(int msk, ref ModuleState ptr)
     {
         if (msk < 0 || msk > 7)
@@ -240,6 +278,19 @@ public partial class QrCode
         }
     }
 
+    /// <summary>
+    /// Complemento de <see cref="ApplyMaskFast"/> para o bloco de 32 módulos: atualiza o flag
+    /// <see cref="ModuleState.Reversed"/> na posição transposta de cada módulo.
+    /// <para>
+    /// Como as posições transpostas <c>x * size + y</c> não são contíguas na memória, não existe um store vetorial
+    /// que as atualize de uma vez, então este passo é escalar:
+    /// </para>
+    /// <list type="number">
+    /// <item><description>Para cada lane i (0 a 31), lê a coluna <c>x[i]</c> e a linha <c>y[i]</c> do módulo.</description></item>
+    /// <item><description>Lê o bit i de <paramref name="mask"/>, gerado por <c>ExtractMostSignificantBits</c>, que é a nova cor do módulo.</description></item>
+    /// <item><description>Liga ou desliga <see cref="ModuleState.Reversed"/> no byte da posição <c>x[i] * size + y[i]</c>.</description></item>
+    /// </list>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ApplyReverseMask(ref ModuleState ptr, Vector256<byte> x, Vector256<byte> y, uint mask)
     {
@@ -257,6 +308,11 @@ public partial class QrCode
         }
     }
 
+    /// <summary>
+    /// Versão de 16 módulos de <see cref="ApplyReverseMask(ref ModuleState, Vector256{byte}, Vector256{byte}, uint)"/>:
+    /// para cada lane i, liga ou desliga <see cref="ModuleState.Reversed"/> na posição transposta
+    /// <c>x[i] * size + y[i]</c> conforme o bit i de <paramref name="mask"/> (a nova cor do módulo).
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ApplyReverseMask(ref ModuleState ptr, Vector128<byte> x, Vector128<byte> y, uint mask)
     {
@@ -296,6 +352,29 @@ public partial class QrCode
         return apply;
     }
 
+    /// <summary>
+    /// Avalia a fórmula da máscara <paramref name="msk"/> para 8 módulos ao mesmo tempo e devolve <paramref name="apply"/>
+    /// mantendo ligadas (todos os bits 1) apenas as lanes em que a máscara deve ser aplicada.
+    /// <para>
+    /// Cada fórmula da especificação tem a forma <c>expressão == 0</c>. O método calcula a expressão em <c>r</c> para todas
+    /// as lanes, sem divisões (paridade com <c>&amp; 1</c>, metade com <c>&gt;&gt; 1</c>, divisão/resto por 3 com
+    /// <see cref="Utils.Div3(Vector128{short})"/> e <see cref="Utils.Mod3(Vector128{short})"/>):
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>0: <c>(x + y) % 2</c></description></item>
+    /// <item><description>1: <c>y % 2</c></description></item>
+    /// <item><description>2: <c>x % 3</c></description></item>
+    /// <item><description>3: <c>(x + y) % 3</c></description></item>
+    /// <item><description>4: <c>(x / 3 + y / 2) % 2</c></description></item>
+    /// <item><description>5: <c>(x * y) % 2 + (x * y) % 3</c></description></item>
+    /// <item><description>6: <c>((x * y) % 2 + (x * y) % 3) % 2</c></description></item>
+    /// <item><description>7: <c>((x + y) % 2 + (x * y) % 3) % 2</c></description></item>
+    /// </list>
+    /// <para>
+    /// Por fim, <c>Vector128.Equals(r, 0)</c> gera uma máscara com todos os bits ligados nas lanes em que <c>r == 0</c>,
+    /// e o AND com <paramref name="apply"/> descarta as lanes que já estavam desligadas (módulos de função).
+    /// </para>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector128<short> CalculateMask(int msk, Vector128<short> x, Vector128<short> y, Vector128<short> apply)
     {
@@ -325,6 +404,13 @@ public partial class QrCode
         return apply & Vector128.Equals(r, Vector128<short>.Zero);
     }
 
+    /// <summary>
+    /// Versão de 256 bits (16 lanes) de <see cref="CalculateMask(int, Vector128{short}, Vector128{short}, Vector128{short})"/>.
+    /// Calcula a expressão da máscara <paramref name="msk"/> em <c>r</c> para todas as lanes usando apenas AND, shifts,
+    /// somas, multiplicações e <see cref="Utils.Div3(Vector256{short})"/>/<see cref="Utils.Mod3(Vector256{short})"/>,
+    /// compara <c>r</c> com zero (lanes iguais ficam com todos os bits ligados) e faz AND com <paramref name="apply"/>,
+    /// para que módulos de função nunca sejam mascarados.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<short> CalculateMask(int msk, Vector256<short> x, Vector256<short> y, Vector256<short> apply)
     {
@@ -404,8 +490,6 @@ public partial class QrCode
         }
 
         result += FindSequentialPatternFast(current, ModuleState.Module);
-        result += FindBadPatternFast(current);
-
         result += FindSequentialPatternFast(current, ModuleState.Reversed);
         result += FindBadPatternFast(current);
 
@@ -417,6 +501,27 @@ public partial class QrCode
         return result < currentScore ? result : -1;
     }
 
+    /// <summary>
+    /// Regra de penalidade N2: soma <c>PENALTY_N2</c> para cada bloco 2x2 de módulos da mesma cor formado pelas linhas
+    /// consecutivas <paramref name="line1"/> e <paramref name="line2"/>, comparando 32 colunas por vez.
+    /// <list type="number">
+    /// <item><description>Carrega 32 bytes de cada linha (<c>vec1</c> e <c>vec2</c>) a partir da mesma coluna.</description></item>
+    /// <item><description>Para os módulos escuros: isola o bit <see cref="ModuleState.Module"/> com AND, compara com
+    /// <c>Equals</c> nas duas linhas e faz AND dos resultados. A lane i fica ligada quando a coluna i é escura nas duas
+    /// linhas, ou seja, forma um "dominó" vertical 2x1.</description></item>
+    /// <item><description><c>ExtractMostSignificantBits</c> transforma esse resultado em uma máscara de bits (bit i = coluna i).
+    /// Um bloco 2x2 existe onde dois bits vizinhos estão ligados (colunas i e i + 1).</description></item>
+    /// <item><description>Para contar os pares de bits vizinhos: <c>TrailingZeroCount</c> pula as colunas que não formam dominó;
+    /// se os dois bits mais baixos forem <c>11</c>, soma a penalidade; depois desloca 1 bit e repete. Uma sequência de n bits
+    /// ligados gera n - 1 blocos 2x2, igual à contagem escalar.</description></item>
+    /// <item><description>Repete o mesmo processo comparando com <see cref="ModuleState.None"/> para os módulos claros.</description></item>
+    /// <item><description>Avança só <c>Count - 1</c> colunas, para que a última coluna de um bloco seja a primeira do próximo e
+    /// o par que cruza a fronteira entre blocos também seja avaliado.</description></item>
+    /// <item><description>Para as colunas que sobram, carrega os últimos 32 bytes da linha (terminando exatamente no fim, para
+    /// não ler fora do array) e desloca a máscara para a direita descartando as colunas já processadas.</description></item>
+    /// <item><description>Se só houver aceleração de 128 bits, executa o mesmo algoritmo com 16 colunas por vez; sem SIMD, usa o laço escalar.</description></item>
+    /// </list>
+    /// </summary>
     private static int FindSquarePattern(ReadOnlySpan<ModuleState> line1, ReadOnlySpan<ModuleState> line2)
     {
         var result = 0;
@@ -582,6 +687,33 @@ public partial class QrCode
         return result;
     }
 
+    /// <summary>
+    /// Regra de penalidade N1: procura sequências de 5 ou mais módulos da mesma cor em uma linha e soma
+    /// <c>3 + (comprimento - 5)</c> para cada uma, medindo os comprimentos das sequências 32 módulos por vez.
+    /// <para>
+    /// <paramref name="flag"/> escolhe o que é analisado: <see cref="ModuleState.Module"/> varre a linha em si e
+    /// <see cref="ModuleState.Reversed"/> varre a coluna correspondente (o flag guarda a matriz transposta).
+    /// </para>
+    /// <list type="number">
+    /// <item><description>Carrega 32 bytes, isola <paramref name="flag"/> com AND e compara com <c>Equals</c>; com
+    /// <c>ExtractMostSignificantBits</c> a linha vira uma máscara de 32 bits (bit i = módulo i escuro).</description></item>
+    /// <item><description>Sequências de cor iguais viram sequências de bits iguais, e <c>TrailingZeroCount</c> mede
+    /// de uma vez quantos zeros seguidos existem a partir do bit atual. Se o bit atual for 1 (resultado 0), a máscara é
+    /// invertida para que a sequência de 1s vire uma sequência de 0s e possa ser medida da mesma forma. A variável
+    /// <c>turn</c> registra se a máscara atual está invertida em relação à original.</description></item>
+    /// <item><description>O comprimento medido é limitado ao fim do bloco (<c>Math.Min</c>), pois a inversão transforma
+    /// os bits vazios da parte alta em 1s. Em seguida a máscara é deslocada por esse comprimento para chegar à próxima sequência.</description></item>
+    /// <item><description>Sequências de 5 ou mais geram <c>3 + (comprimento - 5)</c> de penalidade.</description></item>
+    /// <item><description>Uma sequência pode continuar no próximo bloco. <c>lastCheck</c> guarda o comprimento da sequência
+    /// que terminou no fim do bloco. No bloco seguinte, a máscara é invertida se <c>turn</c> estiver ligado (para manter a mesma
+    /// cor sendo medida), mede-se a continuação e o total <c>lastCheck + step</c> é avaliado: se a parte anterior já tinha 5 ou
+    /// mais, ela já foi penalizada e só soma +1 por módulo extra; caso contrário aplica a regra completa sobre o total.</description></item>
+    /// <item><description>Para os módulos restantes, carrega os últimos 32 bytes da linha (sobrepondo módulos já vistos para
+    /// não ler fora do array) e desloca a máscara para descartar a parte já processada, começando <c>pos</c> nesse deslocamento.</description></item>
+    /// <item><description>Com apenas 128 bits disponíveis usa o mesmo algoritmo com 16 módulos por bloco; sem SIMD usa
+    /// <see cref="FindSequentialPattern"/>.</description></item>
+    /// </list>
+    /// </summary>
     private static int FindSequentialPatternFast(ReadOnlySpan<ModuleState> modules, ModuleState flag)
     {
         var result = 0;
@@ -849,6 +981,30 @@ public partial class QrCode
         return result;
     }
 
+    /// <summary>
+    /// Regra de penalidade N3: procura o padrão parecido com o finder pattern (escuro, claro, escuro, escuro, escuro, claro,
+    /// escuro = 1:1:3:1:1) precedido ou seguido por 4 módulos claros, somando <c>PENALTY_N3</c> por ocorrência.
+    /// <list type="number">
+    /// <item><description>Aloca na stack três bitmaps de 64 bits por palavra (bit i = módulo i): escuro em
+    /// <see cref="ModuleState.Module"/>, escuro em <see cref="ModuleState.Reversed"/> e claro. Cada bitmap tem uma palavra
+    /// de padding antes e duas depois dos dados, para que as leituras deslocadas nunca saiam do buffer.</description></item>
+    /// <item><description>Carrega 32 bytes da linha e mantém só os bits <c>Module | Reversed</c> com AND.</description></item>
+    /// <item><description>Compara esse vetor uma única vez com cada estado (<c>Module</c>, <c>Reversed</c> e zero = claro).
+    /// <c>ExtractMostSignificantBits</c> converte cada comparação em 32 bits, que
+    /// <see cref="SetBadPatternBits"/> grava no bitmap correspondente na posição do bloco.</description></item>
+    /// <item><description>Os módulos que sobram usam uma última carga terminando no fim da linha, deslocando a máscara para
+    /// descartar o que já foi gravado; com 128 bits o processo é o mesmo com 16 módulos por vez; sem SIMD, o laço
+    /// escalar preenche os bitmaps bit a bit.</description></item>
+    /// <item><description>Com os bitmaps prontos, o padrão é testado em 64 posições iniciais de uma vez: para cada palavra,
+    /// <see cref="GetBadPatternBits"/> lê 64 bits começando nos deslocamentos <c>+0, +2, +3, +4, +6</c> (escuros) e
+    /// <c>+1, +5</c> (claros). O AND de todos eles deixa ligado o bit i somente se o padrão 1011101 começa no módulo
+    /// <c>b + i</c>. Isso é feito separadamente para os bitmaps <c>Module</c> e <c>Reversed</c> e o resultado é combinado com OR.</description></item>
+    /// <item><description>Se nenhum padrão foi encontrado na palavra, passa para a próxima.</description></item>
+    /// <item><description>Do mesmo jeito, calcula <c>lightBefore</c> (módulos <c>-4</c> a <c>-1</c> claros) e <c>lightAfter</c>
+    /// (módulos <c>+7</c> a <c>+10</c> claros). <c>PopCount(pattern &amp; lightBefore)</c> e
+    /// <c>PopCount(pattern &amp; lightAfter)</c> contam as ocorrências válidas, multiplicadas por <c>PENALTY_N3</c>.</description></item>
+    /// </list>
+    /// </summary>
     private static int FindBadPatternFast(ReadOnlySpan<ModuleState> modules)
     {
         // Each line is converted into three bitmasks (bit i = module i): dark Module, dark Reversed and light.
@@ -1008,6 +1164,19 @@ public partial class QrCode
         return (lo >> shift) | ((hi << 1) << (63 - shift));
     }
 
+    /// <summary>
+    /// Conta quantos módulos escuros (<see cref="ModuleState.Module"/>) existem na linha <paramref name="mptr"/>, usado pela
+    /// regra de penalidade N4 (proporção de escuros), verificando 32 módulos por vez.
+    /// <list type="number">
+    /// <item><description>Carrega 32 bytes e isola o bit <see cref="ModuleState.Module"/> com AND.</description></item>
+    /// <item><description><c>Equals</c> com o vetor de <c>Module</c> deixa ligadas as lanes escuras e
+    /// <c>ExtractMostSignificantBits</c> as transforma em uma máscara de 32 bits.</description></item>
+    /// <item><description><c>BitOperations.PopCount</c> conta os bits ligados, que são os módulos escuros do bloco.</description></item>
+    /// <item><description>Para o restante, carrega os últimos 32 bytes da linha (sobrepondo módulos já contados) e desloca a
+    /// máscara para a direita descartando os já contados antes do <c>PopCount</c>.</description></item>
+    /// <item><description>Com apenas 128 bits usa o mesmo algoritmo com 16 módulos; sem SIMD, conta um a um.</description></item>
+    /// </list>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int SumBlack(ReadOnlySpan<ModuleState> mptr)
     {
@@ -1160,6 +1329,16 @@ public partial class QrCode
         return result;
     }
 
+    /// <summary>
+    /// Conta os módulos escuros (<see cref="ModuleState.Module"/>) de toda a matriz (<c>size * size</c> bytes), usado pela
+    /// regra de penalidade N4 no caminho escalar.
+    /// <list type="number">
+    /// <item><description>Percorre a matriz linear em blocos de 32 bytes: isola o bit <c>Module</c> com AND, compara com
+    /// <c>Equals</c>, converte em máscara de bits com <c>ExtractMostSignificantBits</c> e soma <c>PopCount</c> da máscara.</description></item>
+    /// <item><description>O que sobrar é processado em blocos de 16 bytes com <see cref="Vector128{T}"/>, do mesmo jeito.</description></item>
+    /// <item><description>Os últimos bytes (menos que um vetor) são contados um a um.</description></item>
+    /// </list>
+    /// </summary>
     private int CountModules(ref ModuleState modulesPtr)
     {
         var size = _size;
@@ -1220,6 +1399,19 @@ public partial class QrCode
         state.HistoryPosition++;
     }
 
+    /// <summary>
+    /// Conta quantos padrões parecidos com o finder pattern (1:1:3:1:1 com 4 módulos claros antes ou depois) terminam no
+    /// histórico de sequências <paramref name="runHistory"/> (comprimentos alternados claro/escuro), retornando 0, 1 ou 2.
+    /// <list type="number">
+    /// <item><description><c>n</c> é o comprimento da sequência em <c>position - 2</c>, a unidade do padrão. Se for 0, não há padrão.</description></item>
+    /// <item><description>O núcleo do padrão exige que as 4 sequências em <c>position - 6</c> a <c>position - 3</c> tenham
+    /// comprimentos <c>n, n, 3n, n</c>. Com SIMD, as 4 são carregadas de uma vez em um <c>Vector128&lt;int&gt;</c> e comparadas
+    /// com <c>n * (1, 1, 3, 1)</c>; o operador <c>==</c> só é verdadeiro se todas as lanes forem iguais, substituindo
+    /// as 4 comparações escalares por uma só.</description></item>
+    /// <item><description>Com o núcleo válido, conta um padrão se a sequência clara anterior (<c>n6</c>) tiver pelo menos <c>n</c>
+    /// e a posterior (<c>n0</c>) pelo menos <c>4n</c>, e outro no caso simétrico.</description></item>
+    /// </list>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FinderPenaltyCountPatterns(ref int runHistory, nuint position)
     {

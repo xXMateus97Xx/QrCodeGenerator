@@ -164,6 +164,26 @@ public sealed class QrSegment
         return new QrSegment(Mode.Byte, data.Length, bb);
     }
 
+    /// <summary>
+    /// Retorna o índice de <paramref name="c"/> em <see cref="ALPHANUMERIC_CHARSET"/> (ou -1 se não existir),
+    /// comparando 16 caracteres por vez com <see cref="Vector256{T}"/>.
+    /// <para>
+    /// O charset tem 45 caracteres UTF-16 e um <c>Vector256&lt;ushort&gt;</c> comporta 16, então três cargas cobrem tudo:
+    /// </para>
+    /// <list type="number">
+    /// <item><description>Se não houver aceleração de hardware para 256 bits, cai no <c>IndexOf</c> escalar.</description></item>
+    /// <item><description>O caractere procurado é replicado (broadcast) em todas as 16 lanes de <c>charVec</c>.</description></item>
+    /// <item><description>Carrega os caracteres [0..15] do charset e compara lane a lane com <c>Vector256.Equals</c>;
+    /// as lanes iguais ficam com todos os bits ligados.</description></item>
+    /// <item><description><c>ExtractMostSignificantBits</c> transforma o resultado em uma máscara de 16 bits (bit i = lane i igual)
+    /// e <c>TrailingZeroCount</c> devolve a posição do primeiro bit ligado. Se for menor que 16, o caractere foi encontrado
+    /// nessa posição; com a máscara zerada o resultado é 32, indicando "não encontrado".</description></item>
+    /// <item><description>Repete com os caracteres [16..31], somando 16 ao índice encontrado.</description></item>
+    /// <item><description>A última carga pega os caracteres [29..44] (os 16 últimos do charset, sobrepondo alguns já testados)
+    /// para não ler além do fim da string; o índice é ajustado somando <c>45 - 16</c>.</description></item>
+    /// <item><description>Se nenhuma das três comparações encontrar o caractere, retorna -1.</description></item>
+    /// </list>
+    /// </summary>
     internal static int GetAlphanumericIndexOf(char c)
     {
         if (!Vector256.IsHardwareAccelerated)
